@@ -11,7 +11,15 @@
     <key>CFBundleVersion</key><string>1</string>
     <key>LSMinimumSystemVersion</key><string>15.0</string>
     <key>NSHighResolutionCapable</key><true/>
-    <key>NSMicrophoneUsageDescription</key><string>LocalSummary records audio so it can transcribe and summarize it on this Mac.</string>
+    <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
+    <key>NSHumanReadableCopyright</key><string>© 2026 Suyoung Lee</string>
+    <key>ITSAppUsesNonExemptEncryption</key><false/>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <!-- Ollama / LM Studio run over plain http on this Mac or the local network -->
+        <key>NSAllowsLocalNetworking</key><true/>
+    </dict>
+    <key>NSMicrophoneUsageDescription</key><string>LocalSummary listens only while you record, so it can turn your voice into notes. Audio never leaves this Mac.</string>
     <key>CFBundleDocumentTypes</key>
     <array>
         <dict>

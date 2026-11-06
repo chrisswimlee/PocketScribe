@@ -185,6 +185,7 @@ struct Sidebar: View {
             $0.title.localizedCaseInsensitiveContains(q)
                 || ($0.summary?.localizedCaseInsensitiveContains(q) ?? false)
                 || ($0.transcript?.text.localizedCaseInsensitiveContains(q) ?? false)
+                || ($0.tags ?? []).contains { $0.localizedCaseInsensitiveContains(q.trimmingCharacters(in: CharacterSet(charactersIn: "#"))) }
         }
     }
 

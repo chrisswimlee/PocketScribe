@@ -62,6 +62,14 @@ struct SettingsView: View {
                 }
                 Toggle("Suggest a title for each recording", isOn: $settings.suggestTitles)
             }
+
+            Section("About") {
+                LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev")
+                Text("Speech recognition by FluidAudio (Apache 2.0) using NVIDIA Parakeet models (CC BY 4.0). Markdown rendering by MarkdownUI (MIT). Audio, transcripts and notes stay on this Mac.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Link("FluidAudio on GitHub", destination: URL(string: "https://github.com/FluidInference/FluidAudio")!)
+                    .font(.caption)
+            }
         }
         .formStyle(.grouped)
         .frame(width: 520)
