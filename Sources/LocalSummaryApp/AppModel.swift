@@ -60,6 +60,9 @@ final class AppModel: ObservableObject {
 
     private init() {
         load()
+        GlobalHotKey.shared.onPress = { [weak self] in self?.voiceShortcutPressed() }
+        GlobalHotKey.shared.onRelease = { [weak self] in self?.voiceShortcutReleased() }
+        DispatchQueue.main.async { self.applyVoiceShortcut() }
         // Anything interrupted by a quit goes back in the queue.
         for i in recordings.indices where recordings[i].status == .processing {
             recordings[i].status = .queued
@@ -224,8 +227,26 @@ final class AppModel: ObservableObject {
             }
             guard let transcript = recordings.first(where: { $0.id == id })?.transcript else { return }
 
-            // 2. Summary
             let summarizer = Summarizer(engine: settings.engineSettings.makeEngine())
+
+            // 2a. Short recordings: clean up into a voice note instead of summarizing.
+            if !transcript.text.isEmpty, transcript.audioDuration < Summarizer.voiceNoteMaxDuration {
+                setProgress(0.6, "Writing your note…")
+                let note = try await summarizer.voiceNote(from: transcript)
+                try Task.checkCancellation()
+                update(id) {
+                    $0.summary = note.body
+                    $0.noteKind = note.kind
+                    $0.tags = note.tags
+                    $0.engineName = summarizer.engine.displayName
+                    $0.status = .ready
+                    $0.checkedActions = []
+                    if $0.titleIsAutomatic, settings.suggestTitles, !note.title.isEmpty { $0.title = note.title }
+                }
+                return
+            }
+
+            // 2b. Longer recordings: meeting-style summary.
             let summary: String
             if transcript.text.isEmpty {
                 summary = "_No speech detected._"
@@ -245,6 +266,8 @@ final class AppModel: ObservableObject {
             try Task.checkCancellation()
             update(id) {
                 $0.summary = summary
+                $0.noteKind = nil
+                $0.tags = nil
                 $0.engineName = summarizer.engine.displayName
                 $0.status = .ready
                 $0.checkedActions = []
@@ -286,9 +309,44 @@ final class AppModel: ObservableObject {
         return out
     }
 
+    // MARK: Voice shortcut (tap to start/stop, or hold to talk)
+
+    private var shortcutDownAt: Date?
+    private var recordingFromShortcut = false
+
+    func applyVoiceShortcut() {
+        if settings.voiceShortcutEnabled { GlobalHotKey.shared.register() } else { GlobalHotKey.shared.unregister() }
+    }
+
+    private func voiceShortcutPressed() {
+        if isRecording {
+            shortcutDownAt = nil
+            stopRecording()
+        } else {
+            shortcutDownAt = Date()
+            recordingFromShortcut = true
+            pendingStopAfterStart = false
+            startRecording()
+        }
+    }
+
+    private func voiceShortcutReleased() {
+        guard let down = shortcutDownAt else { return }
+        shortcutDownAt = nil
+        // Held longer than half a second: push-to-talk, so releasing stops.
+        if Date().timeIntervalSince(down) > 0.5 {
+            if isRecording { stopRecording() } else { pendingStopAfterStart = true }
+        }
+    }
+
+    /// Release arrived before the recorder finished starting (permission prompt etc.).
+    private var pendingStopAfterStart = false
+
     // MARK: Recording
 
-    func toggleRecording() { isRecording ? stopRecording() : startRecording() }
+    func toggleRecording() {
+        if isRecording { stopRecording() } else { recordingFromShortcut = false; pendingStopAfterStart = false; startRecording() }
+    }
 
     private func startRecording() {
         AVAudioApplication.requestRecordPermission { granted in
@@ -319,6 +377,8 @@ final class AppModel: ObservableObject {
                     self.meterTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { _ in
                         Task { @MainActor in self.updateMeter() }
                     }
+                    if self.recordingFromShortcut { ListeningHUD.shared.show(model: self) }
+                    if self.pendingStopAfterStart { self.pendingStopAfterStart = false; self.stopRecording() }
                 } catch {
                     self.errorMessage = error.localizedDescription
                 }
@@ -347,6 +407,16 @@ final class AppModel: ObservableObject {
         var rec = Recording(id: id, title: Recording.defaultRecordingTitle(started), createdAt: started,
                             audioFileName: r.url.lastPathComponent)
         rec.duration = Self.duration(of: r.url)
+        let tooShort = (rec.duration ?? 0) < 0.6
+        if recordingFromShortcut {
+            recordingFromShortcut = false
+            ListeningHUD.shared.hide(after: tooShort ? 0 : 1.4)
+        }
+        // An accidental tap of the shortcut: discard instead of cluttering the library.
+        if tooShort {
+            try? FileManager.default.removeItem(at: r.url)
+            return
+        }
         save(rec)
         recordings.insert(rec, at: 0)
         selection = id

@@ -61,6 +61,9 @@ struct MenuBarContent: View {
 
     var body: some View {
         Button(model.isRecording ? "Stop Recording" : "New Recording") { model.toggleRecording() }
+        if model.settings.voiceShortcutEnabled {
+            Text("Dictate anywhere: \(GlobalHotKey.displayString)")
+        }
         if model.isProcessing {
             Text(model.progressText)
         }

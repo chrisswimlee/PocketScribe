@@ -10,6 +10,11 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section("Voice notes") {
+                Toggle("Dictate from anywhere with \(GlobalHotKey.displayString)", isOn: $settings.voiceShortcutEnabled)
+                Text("Tap to start and tap again to stop, or hold while you talk. Recordings under 3 minutes become a cleaned-up note; longer ones get a meeting summary.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Speech to text") {
                 Picker("Model", selection: $settings.asrModel) {
                     Text("Parakeet v3 · 25 languages").tag(ASRModelChoice.multilingual)

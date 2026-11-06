@@ -137,23 +137,82 @@ struct SummaryBody: View {
     let textSize: Double
 
     var body: some View {
+        if recording.noteKind != nil { noteBody } else { summaryBody }
+    }
+
+    /// Voice note: tags on top, then the note with every "- [ ]" line as a real checkbox.
+    private var noteBody: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                if let kind = recording.noteKind {
+                    Label(kind.label, systemImage: kind.symbol)
+                        .font(.caption.weight(.medium))
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(.tint.opacity(0.15), in: Capsule())
+                }
+                ForEach(recording.tags ?? [], id: \.self) { tag in
+                    Text("#\(tag)").font(.caption).foregroundStyle(.secondary)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(.quaternary, in: Capsule())
+                }
+            }
+            ForEach(Array(Self.noteBlocks(summary).enumerated()), id: \.offset) { _, block in
+                switch block {
+                case .text(let t): md(t)
+                case .task(let i, let t): checkbox(i, t)
+                }
+            }
+        }
+        .textSelection(.enabled)
+    }
+
+    enum NoteBlock { case text(String), task(Int, String) }
+
+    static func noteBlocks(_ md: String) -> [NoteBlock] {
+        var blocks: [NoteBlock] = []
+        var buffer: [String] = []
+        var taskIndex = 0
+        func flush() {
+            let t = buffer.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !t.isEmpty { blocks.append(.text(t)) }
+            buffer.removeAll()
+        }
+        for line in md.components(separatedBy: "\n") {
+            let t = line.trimmingCharacters(in: .whitespaces)
+            if let box = ["- [ ] ", "- [x] ", "- [X] ", "* [ ] "].first(where: { t.hasPrefix($0) }) {
+                flush()
+                blocks.append(.task(taskIndex, String(t.dropFirst(box.count))))
+                taskIndex += 1
+            } else {
+                buffer.append(line)
+            }
+        }
+        flush()
+        return blocks
+    }
+
+    private func checkbox(_ i: Int, _ item: String) -> some View {
+        Toggle(isOn: Binding(
+            get: { recording.checkedActions.contains(i) },
+            set: { _ in model.toggleAction(i, in: recording.id) })
+        ) {
+            Text((try? AttributedString(markdown: Self.linkTimestamps(item))) ?? AttributedString(item))
+                .font(.system(size: textSize))
+                .strikethrough(recording.checkedActions.contains(i))
+                .foregroundStyle(recording.checkedActions.contains(i) ? .secondary : .primary)
+        }
+        .toggleStyle(.checkbox)
+    }
+
+    private var summaryBody: some View {
         let parts = Self.split(summary)
-        VStack(alignment: .leading, spacing: 14) {
+        return VStack(alignment: .leading, spacing: 14) {
             if !parts.before.isEmpty { md(parts.before) }
             if !parts.actions.isEmpty {
                 Text("Action items").font(.system(size: textSize * 1.3, weight: .semibold)).padding(.top, 6)
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(Array(parts.actions.enumerated()), id: \.offset) { i, item in
-                        Toggle(isOn: Binding(
-                            get: { recording.checkedActions.contains(i) },
-                            set: { _ in model.toggleAction(i, in: recording.id) })
-                        ) {
-                            Text((try? AttributedString(markdown: Self.linkTimestamps(item))) ?? AttributedString(item))
-                                .font(.system(size: textSize))
-                                .strikethrough(recording.checkedActions.contains(i))
-                                .foregroundStyle(recording.checkedActions.contains(i) ? .secondary : .primary)
-                        }
-                        .toggleStyle(.checkbox)
+                        checkbox(i, item)
                     }
                 }
             }

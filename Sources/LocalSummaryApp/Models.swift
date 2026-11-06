@@ -20,8 +20,17 @@ struct Recording: Identifiable, Codable, Equatable {
     var engineName: String?
     /// Indices (within the Action items section) the user ticked off.
     var checkedActions: Set<Int> = []
+    /// Set for short recordings that were turned into a voice note (nil = meeting-style summary).
+    var noteKind: VoiceNote.Kind?
+    var tags: [String]?
 
-    var tldr: String? { summary.flatMap { Summarizer.section("TL;DR", in: $0) } }
+    var tldr: String? {
+        if noteKind != nil {
+            return summary?.split(separator: "\n").first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+                .map { String($0).replacingOccurrences(of: "- [ ] ", with: "") }
+        }
+        return summary.flatMap { Summarizer.section("TL;DR", in: $0) }
+    }
 
     var markdown: String {
         var out = "# \(title)\n\n_\(createdAt.formatted(date: .abbreviated, time: .shortened))"
@@ -48,6 +57,9 @@ final class AppSettings: ObservableObject {
     @Published var serverModel: String { didSet { d.set(serverModel, forKey: "serverModel") } }
     @Published var asrModel: ASRModelChoice { didSet { d.set(asrModel.rawValue, forKey: "asrModel") } }
     @Published var suggestTitles: Bool { didSet { d.set(suggestTitles, forKey: "suggestTitles") } }
+    @Published var voiceShortcutEnabled: Bool {
+        didSet { d.set(voiceShortcutEnabled, forKey: "voiceShortcutEnabled"); AppModel.shared.applyVoiceShortcut() }
+    }
 
     init() {
         engineKind = EngineKind(rawValue: d.string(forKey: "engineKind") ?? "") ?? .apple
@@ -55,6 +67,7 @@ final class AppSettings: ObservableObject {
         serverModel = d.string(forKey: "serverModel") ?? "qwen3:8b"
         asrModel = ASRModelChoice(rawValue: d.string(forKey: "asrModel") ?? "") ?? .multilingual
         suggestTitles = d.object(forKey: "suggestTitles") as? Bool ?? true
+        voiceShortcutEnabled = d.object(forKey: "voiceShortcutEnabled") as? Bool ?? true
     }
 
     var engineSettings: EngineSettings {

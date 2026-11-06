@@ -162,7 +162,7 @@ struct EmptyDetail: View {
             Label(model.recordings.isEmpty ? "Record or drop in audio" : "Nothing selected",
                   systemImage: "waveform.badge.mic")
         } description: {
-            Text("Transcription and summaries run on this Mac. Nothing is uploaded.")
+            Text("Press \(GlobalHotKey.displayString) anywhere to dictate a note, or record a meeting here. Everything runs on this Mac.")
         } actions: {
             HStack {
                 Button("Upload Audio…") { model.showImporter = true }.controlSize(.large)
@@ -278,6 +278,10 @@ struct SidebarRow: View {
 
     @ViewBuilder private var statusIcon: some View {
         switch recording.status {
+        case .ready:
+            if let kind = recording.noteKind {
+                Image(systemName: kind.symbol).foregroundStyle(.secondary).accessibilityLabel(kind.label)
+            }
         case .failed:
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 .accessibilityLabel("Failed")
