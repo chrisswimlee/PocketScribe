@@ -44,9 +44,22 @@ public actor Transcriber {
 
     public init() {}
 
-    public func prepare(model: ASRModelChoice = .multilingual) async throws {
+    /// Downloads (first run only) and loads the speech model.
+    /// `progress` receives a 0...1 fraction and a short description of the phase.
+    public func prepare(
+        model: ASRModelChoice = .multilingual,
+        progress: (@Sendable (Double, String) -> Void)? = nil
+    ) async throws {
         if manager != nil, loadedModel == model { return }
-        let models = try await AsrModels.downloadAndLoad(version: model.version)
+        let models = try await AsrModels.downloadAndLoad(version: model.version) { p in
+            let what: String
+            switch p.phase {
+            case .listing: what = "Checking speech model…"
+            case .downloading(let done, let total): what = "Downloading speech model (\(done)/\(total) files)…"
+            case .compiling: what = "Optimizing speech model for this Mac…"
+            }
+            progress?(p.fractionCompleted, what)
+        }
         let m = AsrManager(config: .default)
         try await m.loadModels(models)
         manager = m

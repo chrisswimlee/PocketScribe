@@ -63,7 +63,7 @@ LM Studio works too: start its server and use `http://localhost:1234/v1`.
 | `Sources/LocalSummaryCore/Engines.swift` | Apple Intelligence + OpenAI-compatible local server engines |
 | `Sources/LocalSummaryCore/Pipeline.swift` | audio → transcript → summary |
 | `Sources/localsummary/` | CLI |
-| `Sources/LocalSummaryApp/` | SwiftUI app (record, upload, drag & drop, history, export) |
+| `Sources/LocalSummaryApp/` | SwiftUI app: record (with level meter + menu bar icon), upload / drag & drop / Open With, queue with progress and cancel, audio player with clickable timestamps, search, rename, export |
 
 ## Ideas / next steps
 

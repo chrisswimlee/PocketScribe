@@ -13,6 +13,7 @@ let package = Package(
         // FluidAudio is the on-device speech engine that powers FluidVoice
         // (Parakeet TDT on CoreML / Apple Neural Engine). traits: [] keeps it to ASR + VAD.
         .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.17.7", traits: []),
+        .package(url: "https://github.com/gonzalezreal/swift-markdown-ui", from: "2.4.1"),
     ],
     targets: [
         .target(
@@ -27,7 +28,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "LocalSummaryApp",
-            dependencies: ["LocalSummaryCore"],
+            dependencies: ["LocalSummaryCore", .product(name: "MarkdownUI", package: "swift-markdown-ui")],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
     ]

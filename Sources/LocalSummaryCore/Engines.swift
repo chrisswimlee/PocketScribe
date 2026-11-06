@@ -95,6 +95,18 @@ public struct LocalServerEngine: SummaryEngine {
         return Self.stripThinking(text)
     }
 
+    /// Lists model ids the server offers (GET /models). Used by Settings' "Test connection".
+    public static func listModels(baseURL: URL) async throws -> [String] {
+        struct Models: Decodable { struct M: Decodable { let id: String }; let data: [M] }
+        var req = URLRequest(url: baseURL.appending(path: "models"))
+        req.timeoutInterval = 5
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
+            throw LocalSummaryError.badResponse(String(data: data, encoding: .utf8) ?? "HTTP error")
+        }
+        return try JSONDecoder().decode(Models.self, from: data).data.map(\.id).sorted()
+    }
+
     /// Reasoning models (Qwen3, DeepSeek-R1) may prepend <think>…</think>.
     static func stripThinking(_ s: String) -> String {
         guard let r = s.range(of: "</think>") else { return s }
