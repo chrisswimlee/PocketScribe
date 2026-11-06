@@ -197,7 +197,9 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func setProgress(_ value: Double?, _ text: String) {
+    private func setProgress(_ value: Double?, _ text: String, for id: Recording.ID? = nil) {
+        // Late callbacks from a finished/cancelled job must not overwrite the next job's progress.
+        if let id, id != workingOn { return }
         progress = value
         progressText = text
     }
@@ -209,11 +211,14 @@ final class AppModel: ObservableObject {
             // 1. Transcript (skipped on "Retry summary" when we already have one)
             if r.transcript == nil {
                 try await transcriber.prepare(model: settings.asrModel) { fraction, text in
-                    Task { @MainActor in self.setProgress(fraction * 0.4, text) }
+                    Task { @MainActor in self.setProgress(fraction * 0.4, text, for: id) }
                 }
                 try Task.checkCancellation()
+                setProgress(0.42, "Preparing audio…")
+                let audio = try await readableAudio(for: id)
+                try Task.checkCancellation()
                 setProgress(0.45, "Transcribing…")
-                let t = try await transcriber.transcribe(fileAt: audioURL(for: r), model: settings.asrModel)
+                let t = try await transcriber.transcribe(fileAt: audio, model: settings.asrModel)
                 try Task.checkCancellation()
                 update(id) { $0.transcript = t; $0.duration = $0.duration ?? t.audioDuration }
             }
@@ -230,9 +235,9 @@ final class AppModel: ObservableObject {
                     Task { @MainActor in
                         switch p {
                         case .summarizingChunk(let i, let n):
-                            self.setProgress(0.5 + 0.4 * Double(i - 1) / Double(n), "Reading part \(i) of \(n)…")
+                            self.setProgress(0.5 + 0.4 * Double(i - 1) / Double(n), "Reading part \(i) of \(n)…", for: id)
                         case .combining:
-                            self.setProgress(0.9, "Writing summary…")
+                            self.setProgress(0.9, "Writing summary…", for: id)
                         }
                     }
                 }
@@ -260,6 +265,25 @@ final class AppModel: ObservableObject {
             let message = Task.isCancelled ? "Cancelled." : error.localizedDescription
             update(id) { $0.status = .failed; $0.errorMessage = message }
         }
+    }
+
+    /// Video files (and some containers) can't be read by AVAudioFile. Extract their audio
+    /// track to .m4a once, and use that for both transcription and playback.
+    private func readableAudio(for id: Recording.ID) async throws -> URL {
+        guard let r = recordings.first(where: { $0.id == id }) else { throw CancellationError() }
+        let url = audioURL(for: r)
+        if (try? AVAudioFile(forReading: url)) != nil { return url }
+        let outName = "\(id.uuidString)-audio.m4a"
+        let out = audioDir.appending(path: outName)
+        try? FileManager.default.removeItem(at: out)
+        guard let export = AVAssetExportSession(asset: AVURLAsset(url: url), presetName: AVAssetExportPresetAppleM4A) else {
+            throw NSError(domain: "LocalSummary", code: 2, userInfo: [NSLocalizedDescriptionKey: "This file has no audio track that can be read."])
+        }
+        try await export.export(to: out, as: .m4a)
+        try? FileManager.default.removeItem(at: url)
+        update(id) { $0.audioFileName = outName; $0.duration = Self.duration(of: out) }
+        if selection == id { player.load(out) }
+        return out
     }
 
     // MARK: Recording

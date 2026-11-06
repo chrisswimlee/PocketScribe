@@ -36,11 +36,6 @@ struct Recording: Identifiable, Codable, Equatable {
     static func defaultRecordingTitle(_ date: Date) -> String {
         "Recording, " + date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
     }
-
-    static func == (a: Recording, b: Recording) -> Bool {
-        a.id == b.id && a.title == b.title && a.status == b.status && a.summary == b.summary
-            && a.checkedActions == b.checkedActions && a.errorMessage == b.errorMessage
-    }
 }
 
 /// Persisted preferences. Plain UserDefaults with @Published so SwiftUI refreshes immediately.

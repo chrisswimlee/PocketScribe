@@ -14,6 +14,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in AppModel.shared.importFiles(urls) }
     }
 
+    /// Finish and save an in-progress recording instead of leaving an orphaned file.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        MainActor.assumeIsolated {
+            if AppModel.shared.isRecording { AppModel.shared.toggleRecording() }
+        }
+        return .terminateNow
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 }
 
@@ -91,7 +99,6 @@ struct AppCommands: Commands {
                 .keyboardShortcut("c", modifiers: [.command, .option])
                 .disabled(model.selected?.summary == nil)
             Button("Delete Recording…") { model.pendingDelete = model.selection }
-                .keyboardShortcut(.delete, modifiers: [.command])
                 .disabled(model.selection == nil)
         }
         CommandMenu("Playback") {
@@ -99,10 +106,10 @@ struct AppCommands: Commands {
                 .keyboardShortcut("k", modifiers: [.command])
                 .disabled(!player.isAvailable)
             Button("Back 10 Seconds") { player.skip(-10) }
-                .keyboardShortcut(.leftArrow, modifiers: [.command])
+                .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
                 .disabled(!player.isAvailable)
             Button("Forward 10 Seconds") { player.skip(10) }
-                .keyboardShortcut(.rightArrow, modifiers: [.command])
+                .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
                 .disabled(!player.isAvailable)
         }
         CommandGroup(after: .toolbar) {

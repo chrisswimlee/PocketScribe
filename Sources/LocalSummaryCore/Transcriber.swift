@@ -8,7 +8,7 @@ public struct TranscriptSegment: Codable, Sendable, Hashable {
     public var text: String
 }
 
-public struct Transcript: Codable, Sendable {
+public struct Transcript: Codable, Sendable, Equatable {
     public var text: String
     public var segments: [TranscriptSegment]
     public var audioDuration: TimeInterval

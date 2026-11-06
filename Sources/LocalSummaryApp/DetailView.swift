@@ -78,7 +78,6 @@ struct ProcessingView: View {
                 }
                 .frame(maxWidth: 360)
                 Button("Cancel") { model.cancelProcessing() }
-                    .keyboardShortcut(.cancelAction)
                 Text("You can keep working. Drop more files and they'll be queued.")
                     .font(.callout).foregroundStyle(.secondary)
             } else {
@@ -149,7 +148,7 @@ struct SummaryBody: View {
                             get: { recording.checkedActions.contains(i) },
                             set: { _ in model.toggleAction(i, in: recording.id) })
                         ) {
-                            Text(.init(Self.linkTimestamps(item)))
+                            Text((try? AttributedString(markdown: Self.linkTimestamps(item))) ?? AttributedString(item))
                                 .font(.system(size: textSize))
                                 .strikethrough(recording.checkedActions.contains(i))
                                 .foregroundStyle(recording.checkedActions.contains(i) ? .secondary : .primary)
@@ -209,15 +208,16 @@ struct TranscriptView: View {
     @State private var find = ""
     @FocusState private var findFocused: Bool
 
-    private var segments: [TranscriptSegment] {
-        let all = transcript?.segments ?? []
+    /// (index in the full transcript, segment), filtered by the find field.
+    private var segments: [(Int, TranscriptSegment)] {
+        let all = Array((transcript?.segments ?? []).enumerated())
         let q = find.trimmingCharacters(in: .whitespaces)
-        return q.isEmpty ? all : all.filter { $0.text.localizedCaseInsensitiveContains(q) }
+        return q.isEmpty ? all : all.filter { $0.1.text.localizedCaseInsensitiveContains(q) }
     }
 
-    private var activeStart: TimeInterval? {
+    private var activeIndex: Int? {
         guard player.isPlaying || player.currentTime > 0 else { return nil }
-        return transcript?.segments.last { $0.start <= player.currentTime + 0.05 }?.start
+        return transcript?.segments.lastIndex { $0.start <= player.currentTime + 0.05 }
     }
 
     var body: some View {
@@ -233,7 +233,8 @@ struct TranscriptView: View {
                         .buttonStyle(.plain).foregroundStyle(.secondary).accessibilityLabel("Clear search")
                 }
                 // ⌘F focuses the find field.
-                Button("") { findFocused = true }.keyboardShortcut("f").hidden().frame(width: 0)
+                Button("Find") { findFocused = true }.keyboardShortcut("f")
+                    .opacity(0).frame(width: 0).accessibilityHidden(true)
             }
             .padding(.horizontal, 16).padding(.vertical, 8)
             Divider()
@@ -241,7 +242,7 @@ struct TranscriptView: View {
                 ScrollView { Text(transcript.text).font(.system(size: textSize)).textSelection(.enabled).padding(28) }
             } else {
                 ScrollViewReader { proxy in
-                    List(segments, id: \.start) { seg in
+                    List(segments, id: \.0) { index, seg in
                         HStack(alignment: .firstTextBaseline, spacing: 12) {
                             Button(formatTimestamp(seg.start)) { player.seek(to: seg.start) }
                                 .buttonStyle(.link)
@@ -250,12 +251,11 @@ struct TranscriptView: View {
                             Text(seg.text).font(.system(size: textSize)).textSelection(.enabled)
                         }
                         .padding(.vertical, 2)
-                        .listRowBackground(seg.start == activeStart ? Color.accentColor.opacity(0.12) : Color.clear)
-                        .id(seg.start)
+                        .listRowBackground(index == activeIndex ? Color.accentColor.opacity(0.12) : Color.clear)
                     }
                     .listStyle(.inset)
-                    .onChange(of: activeStart) { _, s in
-                        if let s, player.isPlaying, find.isEmpty { withAnimation { proxy.scrollTo(s, anchor: .center) } }
+                    .onChange(of: activeIndex) { _, i in
+                        if let i, player.isPlaying, find.isEmpty { withAnimation { proxy.scrollTo(i, anchor: .center) } }
                     }
                 }
             }
