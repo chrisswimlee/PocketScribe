@@ -56,7 +56,7 @@ public actor Transcriber {
             switch p.phase {
             case .listing: what = "Checking speech model…"
             case .downloading(let done, let total): what = "Downloading speech model (\(done)/\(total) files)…"
-            case .compiling: what = "Optimizing speech model for this Mac…"
+            case .compiling: what = "Optimizing speech model for this device…"
             }
             progress?(p.fractionCompleted, what)
         }

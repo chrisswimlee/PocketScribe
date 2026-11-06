@@ -71,3 +71,21 @@ LM Studio works too: start its server and use `http://localhost:1234/v1`.
 - Live transcript while recording (`SlidingWindowAsrManager`)
 - Embedded MLX model so no separate server is needed for large models
 - "Ask questions about this recording" chat
+
+## iPhone and iPad app (`iOS/`)
+
+A SwiftUI app (working name LocalNotes, bundle id `dev.chrisswimlee.LocalNotes`, iOS 26+) built on the same
+`LocalSummaryCore` library: record, import audio or video, transcript with tap-to-play timestamps, summaries
+with checkable action items, and quick voice notes (tap or hold the mic button, or use the "New Voice Note"
+shortcut from Siri, Shortcuts, Spotlight or the Action button).
+
+```sh
+brew install xcodegen          # once
+cd iOS && xcodegen && open LocalNotes.xcodeproj
+```
+
+`project.yml` is the source of truth for the Xcode project; edit it and re-run `xcodegen`.
+Summaries need Apple Intelligence (iPhone 15 Pro or newer), or a Mac on the same network running Ollama / LM Studio.
+
+Simulator testing (Debug builds only): `xcrun simctl launch booted dev.chrisswimlee.LocalNotes -importPath /path/to/audio.m4a`
+imports a file on launch; `-openFirst YES` opens the newest item; `-openSettings YES` opens Settings.

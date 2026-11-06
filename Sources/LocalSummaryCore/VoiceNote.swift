@@ -51,7 +51,8 @@ extension Summarizer {
         Tags: <1 to 3 short lowercase tags, comma separated>
         ---
         <the cleaned-up note in Markdown. Use short paragraphs. Put every task the speaker \
-        mentions as a checkbox line like "- [ ] call the dentist". Use bullet points for lists.>
+        actually mentions as a checkbox line starting with "- [ ] ". If no task is mentioned, write no \
+        checkbox lines. Use bullet points for lists.>
 
         Transcript:
         \(transcript)
@@ -93,8 +94,27 @@ extension Summarizer {
         var body = tidy(bodyLines.joined(separator: "\n"))
             .replacingOccurrences(of: "- • ", with: "- ")
             .replacingOccurrences(of: "\n• ", with: "\n- ")
+        body = dropInventedTasks(body, transcript: fallbackText)
         if body.isEmpty { body = fallbackText }
         title = title.trimmingCharacters(in: CharacterSet(charactersIn: " \"'*#."))
         return VoiceNote(title: String(title.prefix(80)), kind: kind, tags: tags, body: body)
+    }
+}
+
+extension Summarizer {
+    /// Small models sometimes copy an example task from the prompt. Drop any "- [ ]" task that
+    /// shares no meaningful word (4+ letters) with what was actually said.
+    static func dropInventedTasks(_ body: String, transcript: String) -> String {
+        func words(_ s: String) -> Set<String> {
+            Set(s.lowercased().components(separatedBy: CharacterSet.letters.inverted).filter { $0.count >= 4 })
+        }
+        let said = words(transcript)
+        guard !said.isEmpty else { return body }
+        return body.components(separatedBy: "\n").filter { line in
+            let t = line.trimmingCharacters(in: .whitespaces)
+            guard t.hasPrefix("- [ ] ") else { return true }
+            let w = words(String(t.dropFirst(6)))
+            return w.isEmpty || !w.isDisjoint(with: said)
+        }.joined(separator: "\n")
     }
 }

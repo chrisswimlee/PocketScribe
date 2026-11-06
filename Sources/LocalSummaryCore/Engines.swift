@@ -3,9 +3,9 @@ import Foundation
 import FoundationModels
 #endif
 
-// MARK: - Apple on-device model (Apple Intelligence, macOS 26+)
+// MARK: - Apple on-device model (Apple Intelligence, macOS 26+ / iOS 26+)
 
-/// Uses the ~3B on-device model that ships with macOS. Zero setup, nothing to download,
+/// Uses the ~3B on-device model that ships with macOS and iOS. Zero setup, nothing to download,
 /// but a small context window, so long transcripts are chunked aggressively.
 public struct AppleIntelligenceEngine: SummaryEngine {
     public let displayName = "Apple Intelligence (on-device)"
@@ -16,19 +16,25 @@ public struct AppleIntelligenceEngine: SummaryEngine {
     /// nil when usable, otherwise a human-readable reason.
     public static var unavailableReason: String? {
         #if canImport(FoundationModels)
-        if #available(macOS 26.0, *) {
+        if #available(macOS 26.0, iOS 26.0, *) {
             switch SystemLanguageModel.default.availability {
             case .available: return nil
+            case .unavailable(.deviceNotEligible):
+                return "This device can't run Apple Intelligence. It needs an iPhone 15 Pro or newer, or a Mac or iPad with Apple silicon."
+            case .unavailable(.appleIntelligenceNotEnabled):
+                return "Apple Intelligence is turned off. Turn it on in Settings › Apple Intelligence & Siri."
+            case .unavailable(.modelNotReady):
+                return "Apple Intelligence is still downloading its model. Try again in a few minutes."
             case .unavailable(let reason): return "Apple Intelligence model unavailable (\(reason))."
             }
         }
         #endif
-        return "Requires macOS 26 or later with Apple Intelligence enabled."
+        return "Requires macOS 26 or iOS 26 or later, on a device with Apple Intelligence turned on."
     }
 
     public func complete(system: String, prompt: String) async throws -> String {
         #if canImport(FoundationModels)
-        if #available(macOS 26.0, *) {
+        if #available(macOS 26.0, iOS 26.0, *) {
             if let why = Self.unavailableReason { throw LocalSummaryError.engineUnavailable(why) }
             let session = LanguageModelSession(instructions: system)
             let response = try await session.respond(to: prompt)
