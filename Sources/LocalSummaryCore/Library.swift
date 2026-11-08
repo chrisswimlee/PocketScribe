@@ -25,6 +25,11 @@ public struct LibraryItem: Identifiable, Codable, Equatable, Sendable {
     /// Set for short recordings that were turned into a voice note (nil = meeting-style summary).
     public var noteKind: VoiceNote.Kind?
     public var tags: [String]?
+    /// Names the user gave to "Speaker 1", "Speaker 2"… (keyed by speaker number).
+    public var speakerNames: [Int: String]?
+    /// Action item indices already sent to Reminders / added to Calendar.
+    public var sentToReminders: Set<Int>?
+    public var sentToCalendar: Set<Int>?
 
     public init(
         id: UUID = UUID(), title: String, titleIsAutomatic: Bool = true, createdAt: Date = Date(),
@@ -53,8 +58,8 @@ public struct LibraryItem: Identifiable, Codable, Equatable, Sendable {
         if let d = duration { out += " · \(formatTimestamp(d))" }
         if let e = engineName { out += " · summarized by \(e)" }
         out += "_\n\n"
-        if let s = summary { out += s + "\n\n" }
-        if let t = transcript { out += "---\n\n## Transcript\n\n\(t.timestampedText)\n" }
+        if let s = summary { out += Speakers.apply(speakerNames, to: s) + "\n\n" }
+        if let t = transcript { out += "---\n\n## Transcript\n\n\(t.timestampedText(speakerNames: speakerNames))\n" }
         return out
     }
 

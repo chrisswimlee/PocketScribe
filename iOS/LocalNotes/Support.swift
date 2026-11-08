@@ -14,6 +14,7 @@ final class AppSettings: ObservableObject {
     @Published var serverModel: String { didSet { d.set(serverModel, forKey: "serverModel") } }
     @Published var asrModel: ASRModelChoice { didSet { d.set(asrModel.rawValue, forKey: "asrModel") } }
     @Published var suggestTitles: Bool { didSet { d.set(suggestTitles, forKey: "suggestTitles") } }
+    @Published var labelSpeakers: Bool { didSet { d.set(labelSpeakers, forKey: "labelSpeakers") } }
 
     init() {
         engineKind = EngineKind(rawValue: d.string(forKey: "engineKind") ?? "") ?? .apple
@@ -21,6 +22,7 @@ final class AppSettings: ObservableObject {
         serverModel = d.string(forKey: "serverModel") ?? "qwen3:8b"
         asrModel = ASRModelChoice(rawValue: d.string(forKey: "asrModel") ?? "") ?? .multilingual
         suggestTitles = d.object(forKey: "suggestTitles") as? Bool ?? true
+        labelSpeakers = d.object(forKey: "labelSpeakers") as? Bool ?? true
     }
 
     var engineSettings: EngineSettings {

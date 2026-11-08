@@ -57,6 +57,8 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         NSMicrophoneUsageDescription: LocalNotes records your voice and meetings to transcribe them. Audio stays on this iPhone.
+        NSRemindersFullAccessUsageDescription: LocalNotes adds the action items you choose to Reminders.
+        NSCalendarsWriteOnlyAccessUsageDescription: LocalNotes adds the action items you choose to your calendar. It never reads your events.
         NSLocalNetworkUsageDescription: LocalNotes can send transcripts to a Mac on your network running Ollama or LM Studio for summaries, if you set that up in Settings.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true

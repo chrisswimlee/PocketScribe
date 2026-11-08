@@ -37,18 +37,23 @@ public struct Pipeline: Sendable {
     public let transcriber: Transcriber
     public let summarizer: Summarizer
     public let asrModel: ASRModelChoice
+    public let labelSpeakers: Bool
 
-    public init(transcriber: Transcriber = Transcriber(), engine: SummaryEngine, asrModel: ASRModelChoice = .multilingual) {
+    public init(
+        transcriber: Transcriber = Transcriber(), engine: SummaryEngine, asrModel: ASRModelChoice = .multilingual,
+        labelSpeakers: Bool = true
+    ) {
         self.transcriber = transcriber
         self.summarizer = Summarizer(engine: engine)
         self.asrModel = asrModel
+        self.labelSpeakers = labelSpeakers
     }
 
     public func run(audio url: URL, stage: (@Sendable (PipelineStage) -> Void)? = nil) async throws -> SummaryResult {
         stage?(.loadingSpeechModel)
         try await transcriber.prepare(model: asrModel)
         stage?(.transcribing)
-        let transcript = try await transcriber.transcribe(fileAt: url, model: asrModel)
+        let transcript = try await transcriber.transcribe(fileAt: url, model: asrModel, labelSpeakers: labelSpeakers)
         stage?(.summarizing("Summarizing…"))
         let summary: String
         if transcript.text.isEmpty {

@@ -20,6 +20,9 @@
         <key>NSAllowsLocalNetworking</key><true/>
     </dict>
     <key>NSMicrophoneUsageDescription</key><string>LocalSummary listens only while you record, so it can turn your voice into notes. Audio never leaves this Mac.</string>
+    <key>NSRemindersFullAccessUsageDescription</key><string>LocalSummary adds the action items you choose to Reminders.</string>
+    <key>NSRemindersUsageDescription</key><string>LocalSummary adds the action items you choose to Reminders.</string>
+    <key>NSCalendarsWriteOnlyAccessUsageDescription</key><string>LocalSummary adds the action items you choose to your calendar. It never reads your events.</string>
     <key>CFBundleDocumentTypes</key>
     <array>
         <dict>

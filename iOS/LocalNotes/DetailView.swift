@@ -1,3 +1,5 @@
+import EventKit
+import EventKitUI
 import LocalSummaryCore
 import MarkdownUI
 import SwiftUI
@@ -8,7 +10,15 @@ struct DetailView: View {
     let id: Recording.ID
 
     enum Tab: String, CaseIterable { case summary = "Summary", transcript = "Transcript" }
-    @State private var tab: Tab = .summary
+    @State private var tab: Tab = Self.initialTab
+
+    private static var initialTab: Tab {
+        #if DEBUG
+        // Test hook: -detailTab transcript
+        if UserDefaults.standard.string(forKey: "detailTab") == "transcript" { return .transcript }
+        #endif
+        return .summary
+    }
     @State private var renaming = false
     @State private var newTitle = ""
     @State private var confirmDelete = false
@@ -25,6 +35,7 @@ struct DetailView: View {
     }
 
     private func content(_ r: Recording) -> some View {
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header(r)
@@ -35,11 +46,32 @@ struct DetailView: View {
                 .pickerStyle(.segmented)
                 switch tab {
                 case .summary: summarySection(r)
-                case .transcript: TranscriptSection(transcript: r.transcript)
+                case .transcript: TranscriptSection(recording: r)
                 }
             }
             .padding()
         }
+        #if DEBUG
+        // Test hook: -scrollTo actions
+        .onAppear {
+            if let target = UserDefaults.standard.string(forKey: "scrollTo") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { proxy.scrollTo(target, anchor: .top) }
+            }
+        }
+        #endif
+        }
+        .overlay(alignment: .bottom) {
+            if let notice = model.notice {
+                Label(notice, systemImage: "checkmark.circle.fill")
+                    .font(.subheadline.weight(.medium))
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .background(.regularMaterial, in: Capsule())
+                    .shadow(radius: 4, y: 2)
+                    .padding(.bottom, 12)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.default, value: model.notice)
         // The big title is in the header, so the bar stays clean.
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
@@ -72,10 +104,10 @@ struct DetailView: View {
         Menu {
             Button { newTitle = r.title; renaming = true } label: { Label("Rename", systemImage: "pencil") }
             if let s = r.summary {
-                Button { UIPasteboard.general.string = s } label: { Label("Copy summary", systemImage: "doc.on.doc") }
+                Button { UIPasteboard.general.string = Speakers.apply(r.speakerNames, to: s) } label: { Label("Copy summary", systemImage: "doc.on.doc") }
             }
             if let t = r.transcript {
-                Button { UIPasteboard.general.string = t.text } label: { Label("Copy transcript", systemImage: "text.quote") }
+                Button { UIPasteboard.general.string = r.speakerNames == nil && t.speakers.isEmpty ? t.text : t.timestampedText(speakerNames: r.speakerNames) } label: { Label("Copy transcript", systemImage: "text.quote") }
             }
             if r.status == .ready || r.status == .failed {
                 Button { model.retry(r.id) } label: {
@@ -203,18 +235,32 @@ struct PlayerControls: View {
 
 /// Renders the summary as Markdown, with the action items (or a note's tasks) as real, saved
 /// checkboxes, and every [mm:ss] turned into a link that plays the audio from there.
+/// Each item can go to Reminders or Calendar.
 struct SummaryBody: View {
     @EnvironmentObject var model: AppModel
     let recording: Recording
     let summary: String
+    @State private var eventDraft: EventDraft?
+
+    /// The summary with any renamed speakers ("Speaker 2" → "Maria").
+    private var text: String { Speakers.apply(recording.speakerNames, to: summary) }
 
     var body: some View {
-        if recording.noteKind != nil { noteBody } else { summaryBody }
+        Group {
+            if recording.noteKind != nil { noteBody } else { summaryBody }
+        }
+        .sheet(item: $eventDraft) { draft in
+            EventEditor(event: draft.event, store: ActionItemSender.shared.store) { saved in
+                if saved { model.markAddedToCalendar(draft.index, in: recording.id) }
+                eventDraft = nil
+            }
+            .ignoresSafeArea()
+        }
     }
 
     private var noteBody: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ForEach(Array(SummaryLayout.noteBlocks(summary).enumerated()), id: \.offset) { _, block in
+            ForEach(Array(SummaryLayout.noteBlocks(text).enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .text(let t): md(t)
                 case .task(let i, let t): checkbox(i, t)
@@ -225,11 +271,28 @@ struct SummaryBody: View {
     }
 
     private var summaryBody: some View {
-        let parts = SummaryLayout.splitActions(summary)
+        let parts = SummaryLayout.splitActions(text)
+        let unsent = parts.actions.indices.filter { recording.sentToReminders?.contains($0) != true }
         return VStack(alignment: .leading, spacing: 14) {
             if !parts.before.isEmpty { md(parts.before) }
             if !parts.actions.isEmpty {
-                Text("Action items").font(.title3.weight(.semibold)).padding(.top, 6)
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Action items").font(.title3.weight(.semibold))
+                    Spacer()
+                    if !unsent.isEmpty {
+                        Button {
+                            model.sendToReminders(unsent, in: recording.id)
+                        } label: {
+                            Label(unsent.count == parts.actions.count ? "Add all to Reminders" : "Add \(unsent.count) to Reminders",
+                                  systemImage: "checklist")
+                                .font(.subheadline)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                }
+                .padding(.top, 6)
+                .id("actions")
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(Array(parts.actions.enumerated()), id: \.offset) { i, item in checkbox(i, item) }
                 }
@@ -241,19 +304,45 @@ struct SummaryBody: View {
 
     private func checkbox(_ i: Int, _ item: String) -> some View {
         let done = recording.checkedActions.contains(i)
-        return Button { model.toggleAction(i, in: recording.id) } label: {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Image(systemName: done ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(done ? Color.accentColor : .secondary)
-                    .font(.title3)
-                Text((try? AttributedString(markdown: SummaryLayout.linkTimestamps(item))) ?? AttributedString(item))
-                    .strikethrough(done)
-                    .foregroundStyle(done ? .secondary : .primary)
-                    .multilineTextAlignment(.leading)
+        let inReminders = recording.sentToReminders?.contains(i) == true
+        let inCalendar = recording.sentToCalendar?.contains(i) == true
+        return HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Button { model.toggleAction(i, in: recording.id) } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Image(systemName: done ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(done ? Color.accentColor : .secondary)
+                        .font(.title3)
+                    Text((try? AttributedString(markdown: SummaryLayout.linkTimestamps(item))) ?? AttributedString(item))
+                        .strikethrough(done)
+                        .foregroundStyle(done ? .secondary : .primary)
+                        .multilineTextAlignment(.leading)
+                }
             }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(done ? .isSelected : [])
+            Spacer(minLength: 4)
+            Menu {
+                Button { model.sendToReminders([i], in: recording.id) } label: {
+                    Label(inReminders ? "Add to Reminders again" : "Add to Reminders", systemImage: "checklist")
+                }
+                Button {
+                    if let e = model.draftEvent(i, in: recording.id) { eventDraft = EventDraft(index: i, event: e) }
+                } label: {
+                    Label(inCalendar ? "Add to Calendar again" : "Add to Calendar", systemImage: "calendar.badge.plus")
+                }
+            } label: {
+                HStack(spacing: 3) {
+                    if inReminders { Image(systemName: "checklist") }
+                    if inCalendar { Image(systemName: "calendar") }
+                    if !inReminders && !inCalendar { Image(systemName: "ellipsis.circle") }
+                }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 32, minHeight: 32)
+                .contentShape(Rectangle())
+            }
+            .accessibilityLabel(inReminders || inCalendar ? "Sent. Send again" : "Send to Reminders or Calendar")
         }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(done ? .isSelected : [])
     }
 
     private func md(_ text: String) -> some View {
@@ -262,17 +351,64 @@ struct SummaryBody: View {
     }
 }
 
+struct EventDraft: Identifiable {
+    let id = UUID()
+    let index: Int
+    let event: EKEvent
+}
+
+/// The system "New Event" sheet. It saves through Calendar itself, so no Calendar permission is needed.
+struct EventEditor: UIViewControllerRepresentable {
+    let event: EKEvent
+    let store: EKEventStore
+    let done: (Bool) -> Void
+
+    func makeUIViewController(context: Context) -> EKEventEditViewController {
+        let vc = EKEventEditViewController()
+        vc.eventStore = store
+        vc.event = event
+        vc.editViewDelegate = context.coordinator
+        return vc
+    }
+
+    func updateUIViewController(_ vc: EKEventEditViewController, context: Context) {}
+    func makeCoordinator() -> Coordinator { Coordinator(done: done) }
+
+    final class Coordinator: NSObject, EKEventEditViewDelegate {
+        let done: (Bool) -> Void
+        init(done: @escaping (Bool) -> Void) { self.done = done }
+        func eventEditViewController(_ controller: EKEventEditViewController, didCompleteWith action: EKEventEditViewAction) {
+            done(action == .saved)
+        }
+    }
+}
+
 // MARK: - Transcript
 
+/// A steady color per speaker number.
+enum SpeakerColor {
+    static let palette: [Color] = [.blue, .orange, .green, .purple, .pink, .teal, .brown, .indigo]
+    static func color(_ n: Int) -> Color { palette[(max(n, 1) - 1) % palette.count] }
+}
+
 struct TranscriptSection: View {
+    @EnvironmentObject var model: AppModel
     @EnvironmentObject var player: AudioPlayer
-    let transcript: Transcript?
+    let recording: Recording
     @State private var find = ""
+    @State private var renaming: Int?
+    @State private var newName = ""
+
+    private var transcript: Transcript? { recording.transcript }
+    private func name(_ n: Int) -> String { Speakers.name(n, in: recording.speakerNames) }
 
     private var segments: [(Int, TranscriptSegment)] {
         let all = Array((transcript?.segments ?? []).enumerated())
         let q = find.trimmingCharacters(in: .whitespaces)
-        return q.isEmpty ? all : all.filter { $0.1.text.localizedCaseInsensitiveContains(q) }
+        return q.isEmpty ? all : all.filter {
+            $0.1.text.localizedCaseInsensitiveContains(q)
+                || ($0.1.speaker.map { name($0).localizedCaseInsensitiveContains(q) } ?? false)
+        }
     }
 
     private var activeIndex: Int? {
@@ -295,11 +431,23 @@ struct TranscriptSection: View {
                 .padding(10)
                 .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
 
+                speakerBar(transcript)
+
                 if transcript.segments.isEmpty {
                     Text(transcript.text.isEmpty ? "No speech detected." : transcript.text).textSelection(.enabled)
                 } else {
+                    let rows = segments
                     LazyVStack(alignment: .leading, spacing: 10) {
-                        ForEach(segments, id: \.0) { i, seg in
+                        ForEach(Array(rows.enumerated()), id: \.element.0) { pos, entry in
+                            let (i, seg) = entry
+                            if let n = seg.speaker, pos == 0 || rows[pos - 1].1.speaker != n {
+                                Button { startRename(n) } label: {
+                                    Text(name(n)).font(.subheadline.weight(.semibold)).foregroundStyle(SpeakerColor.color(n))
+                                }
+                                .buttonStyle(.plain)
+                                .padding(.top, pos == 0 ? 0 : 6)
+                                .accessibilityHint("Renames this speaker")
+                            }
                             Button { player.seek(to: seg.start) } label: {
                                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                                     Text(formatTimestamp(seg.start))
@@ -321,8 +469,62 @@ struct TranscriptSection: View {
                 Text("Transcribed on this device in \(String(format: "%.1f", transcript.processingTime)) s")
                     .font(.caption).foregroundStyle(.tertiary)
             }
+            .alert("Rename \(renaming.map(name) ?? "speaker")", isPresented: Binding(
+                get: { renaming != nil }, set: { if !$0 { renaming = nil } })
+            ) {
+                TextField("Name", text: $newName)
+                Button("Rename") {
+                    if let n = renaming { model.renameSpeaker(n, to: newName, in: recording.id) }
+                    renaming = nil
+                }
+                if let n = renaming, recording.speakerNames?[n] != nil {
+                    Button("Use “\(Speakers.defaultName(n))”") {
+                        model.renameSpeaker(n, to: "", in: recording.id)
+                        renaming = nil
+                    }
+                }
+                Button("Cancel", role: .cancel) { renaming = nil }
+            } message: {
+                Text("The new name is used in the transcript, the summary and when you share.")
+            }
         } else {
             Text("The transcript will appear here when it's ready.").foregroundStyle(.secondary)
         }
+    }
+
+    @ViewBuilder private func speakerBar(_ t: Transcript) -> some View {
+        if !t.speakers.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(t.speakers, id: \.self) { n in
+                        Button { startRename(n) } label: {
+                            HStack(spacing: 5) {
+                                Circle().fill(SpeakerColor.color(n)).frame(width: 8, height: 8)
+                                Text(name(n))
+                                Image(systemName: "pencil").font(.caption2).foregroundStyle(.secondary)
+                            }
+                            .font(.subheadline)
+                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .background(.quaternary.opacity(0.6), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Rename \(name(n))")
+                    }
+                }
+            }
+        } else if !t.text.isEmpty, t.audioDuration >= Speakers.minimumDuration, recording.noteKind == nil {
+            HStack(spacing: 8) {
+                Image(systemName: "person.2").foregroundStyle(.secondary)
+                Text("No speaker labels yet.").font(.footnote).foregroundStyle(.secondary)
+                Spacer()
+                Button("Label speakers") { model.labelSpeakers(recording.id) }
+                    .buttonStyle(.bordered).controlSize(.small)
+            }
+        }
+    }
+
+    private func startRename(_ n: Int) {
+        newName = recording.speakerNames?[n] ?? ""
+        renaming = n
     }
 }

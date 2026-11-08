@@ -23,7 +23,9 @@ public struct Summarizer: Sendable {
     You turn raw speech-to-text transcripts into clear, faithful notes. \
     Transcripts may contain recognition errors, filler words and missing punctuation; \
     infer meaning sensibly but never invent facts, names or numbers that are not in the transcript. \
-    Lines start with [mm:ss] timestamps. Write in the same language as the transcript.
+    Lines start with [mm:ss] timestamps. Some lines then name who is talking, like "Speaker 2:" \
+    or a person's name; when they do, say who said or will do what, using a real name if one is \
+    clearly mentioned and the speaker label otherwise. Write in the same language as the transcript.
     """
 
     static func finalPrompt(_ material: String, isNotes: Bool) -> String {
@@ -43,7 +45,8 @@ public struct Summarizer: Sendable {
         ## Action items
         One checkbox line per task, for example:
         - [ ] Sam: send the budget report (by Friday)
-        Leave out the name if no owner was mentioned, and the deadline if none was given.
+        Start with the owner (a name, or a speaker label like "Speaker 2") when it is clear who will do it, \
+        and leave it out otherwise. Add the deadline in parentheses only if one was given.
 
         ## Notable moments
         Bullet list of up to 6 moments worth revisiting, each starting with its [mm:ss] timestamp.

@@ -1,4 +1,5 @@
 import AVFoundation
+import EventKit
 import Foundation
 import LocalSummaryCore
 import SwiftUI
@@ -12,6 +13,8 @@ final class AppModel: ObservableObject {
     @Published var recordings: [Recording] = []
     @Published var path: [Recording.ID] = []
     @Published var errorMessage: String?
+    /// A short confirmation shown at the bottom of the detail screen, e.g. "Added 3 reminders".
+    @Published var notice: String?
 
     // Progress of the item being processed
     @Published var progress: Double?
@@ -111,6 +114,77 @@ final class AppModel: ObservableObject {
     func toggleAction(_ index: Int, in id: Recording.ID) {
         update(id) { r in
             if r.checkedActions.contains(index) { r.checkedActions.remove(index) } else { r.checkedActions.insert(index) }
+        }
+    }
+
+    // MARK: Speakers
+
+    func renameSpeaker(_ speaker: Int, to name: String, in id: Recording.ID) {
+        let t = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        update(id) { r in
+            var names = r.speakerNames ?? [:]
+            names[speaker] = (t.isEmpty || t == Speakers.defaultName(speaker)) ? nil : t
+            r.speakerNames = names.isEmpty ? nil : names
+        }
+    }
+
+    /// Transcribes again with speaker labels (for recordings made before labels existed),
+    /// then writes a new summary that can say who does what.
+    func labelSpeakers(_ id: Recording.ID) {
+        if !settings.labelSpeakers { settings.labelSpeakers = true }
+        update(id) { $0.transcript = nil; $0.speakerNames = nil; $0.status = .queued; $0.errorMessage = nil }
+        processQueue()
+    }
+
+    // MARK: Action items → Reminders / Calendar
+
+    /// Action item lines of a recording: the "Action items" section, or a voice note's tasks.
+    func actionItems(of r: Recording) -> [String] {
+        guard let s = r.summary else { return [] }
+        if r.noteKind != nil {
+            return SummaryLayout.noteBlocks(s).compactMap { if case .task(_, let t) = $0 { return t } else { return nil } }
+        }
+        return SummaryLayout.splitActions(s).actions
+    }
+
+    func sendToReminders(_ indices: [Int], in id: Recording.ID) {
+        guard let r = recording(id) else { return }
+        let lines = actionItems(of: r)
+        let picked = indices.filter { $0 < lines.count }
+        guard !picked.isEmpty else { return }
+        let items = picked.map { ActionItem(lines[$0], speakerNames: r.speakerNames) }
+        Task {
+            do {
+                let n = try await ActionItemSender.shared.addReminders(items, from: r.title)
+                update(id) { $0.sentToReminders = ($0.sentToReminders ?? []).union(picked) }
+                showNotice(n == 1 ? "Added to Reminders" : "Added \(n) reminders")
+            } catch {
+                errorMessage = error.localizedDescription
+                    .replacingOccurrences(of: "System Settings › Privacy & Security", with: "Settings › Privacy & Security")
+            }
+        }
+    }
+
+    /// An unsaved event for the system event editor, where the user picks the time and saves.
+    func draftEvent(_ index: Int, in id: Recording.ID) -> EKEvent? {
+        guard let r = recording(id) else { return nil }
+        let lines = actionItems(of: r)
+        guard index < lines.count else { return nil }
+        return ActionItemSender.shared.draftEvent(ActionItem(lines[index], speakerNames: r.speakerNames), from: r.title)
+    }
+
+    func markAddedToCalendar(_ index: Int, in id: Recording.ID) {
+        update(id) { $0.sentToCalendar = ($0.sentToCalendar ?? []).union([index]) }
+        showNotice("Added to Calendar")
+    }
+
+    private var noticeTask: Task<Void, Never>?
+    func showNotice(_ text: String) {
+        notice = text
+        noticeTask?.cancel()
+        noticeTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            if !Task.isCancelled { self?.notice = nil }
         }
     }
 
@@ -230,9 +304,17 @@ final class AppModel: ObservableObject {
                 let audio = try await readableAudio(for: id)
                 try Task.checkCancellation()
                 setProgress(0.45, "Transcribing…")
-                let t = try await transcriber.transcribe(fileAt: audio, model: settings.asrModel)
+                let t = try await transcriber.transcribe(
+                    fileAt: audio, model: settings.asrModel, labelSpeakers: settings.labelSpeakers
+                ) { text in
+                    Task { @MainActor in self.setProgress(0.47, text, for: id) }
+                }
                 try Task.checkCancellation()
-                update(id) { $0.transcript = t; $0.duration = $0.duration ?? t.audioDuration }
+                update(id) {
+                    $0.transcript = t
+                    $0.duration = $0.duration ?? t.audioDuration
+                    $0.speakerNames = nil
+                }
             }
             guard let transcript = recording(id)?.transcript else { return }
 
@@ -250,6 +332,8 @@ final class AppModel: ObservableObject {
                     $0.engineName = summarizer.engine.displayName
                     $0.status = .ready
                     $0.checkedActions = []
+                    $0.sentToReminders = nil
+                    $0.sentToCalendar = nil
                     if $0.titleIsAutomatic, settings.suggestTitles, !note.title.isEmpty { $0.title = note.title }
                 }
                 return
@@ -280,6 +364,8 @@ final class AppModel: ObservableObject {
                 $0.engineName = summarizer.engine.displayName
                 $0.status = .ready
                 $0.checkedActions = []
+                $0.sentToReminders = nil
+                $0.sentToCalendar = nil
             }
 
             // 3. Title (best effort)
@@ -445,6 +531,11 @@ final class AppModel: ObservableObject {
             }
         }
         if args.bool(forKey: "openFirst"), let first = recordings.first { path = [first.id] }
+        if let s = args.string(forKey: "openID"), let id = UUID(uuidString: s), let r = recording(id) {
+            path = [id]
+            // -sendToReminders YES: sends the opened recording's action items (grant access with simctl privacy first).
+            if args.bool(forKey: "sendToReminders") { sendToReminders(Array(actionItems(of: r).indices), in: id) }
+        }
         if args.bool(forKey: "openSettings") { showSettings = true }
         #endif
     }

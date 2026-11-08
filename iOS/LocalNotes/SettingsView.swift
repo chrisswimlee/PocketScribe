@@ -15,10 +15,11 @@ struct SettingsView: View {
                         Text("Multilingual (25 languages)").tag(ASRModelChoice.multilingual)
                         Text("English only").tag(ASRModelChoice.english)
                     }
+                    Toggle("Label speakers", isOn: $settings.labelSpeakers)
                 } header: {
                     Text("Transcription")
                 } footer: {
-                    Text("Speech is turned into text on this iPhone with Parakeet. The model (about 500 MB) downloads once, the first time you transcribe, and then works offline.")
+                    Text("Speech is turned into text on this iPhone with Parakeet. The model (about 500 MB) downloads once, the first time you transcribe, and then works offline. Recordings over 3 minutes also get Speaker 1, Speaker 2… labels, worked out on this iPhone; tap a name in the transcript to rename it.")
                 }
 
                 Section {

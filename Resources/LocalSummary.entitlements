@@ -8,6 +8,8 @@
     <key>com.apple.security.device.audio-input</key><true/>
     <!-- Import files the user picks, drops or opens; save exports -->
     <key>com.apple.security.files.user-selected.read-write</key><true/>
+    <!-- Add action items to Reminders and Calendar (EventKit) -->
+    <key>com.apple.security.personal-information.calendars</key><true/>
     <!-- One-time speech model download, and Ollama / LM Studio on localhost -->
     <key>com.apple.security.network.client</key><true/>
 </dict>

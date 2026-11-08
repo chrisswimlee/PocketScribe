@@ -22,6 +22,9 @@ struct SettingsView: View {
                 }
                 Text("Runs on the Neural Engine with FluidAudio, the engine behind FluidVoice.")
                     .font(.caption).foregroundStyle(.secondary)
+                Toggle("Label speakers in meetings", isOn: $settings.labelSpeakers)
+                Text("Recordings over 3 minutes get Speaker 1, Speaker 2… labels, worked out on this Mac. Click a name in the transcript to rename it.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
 
             Section("Summarizer") {

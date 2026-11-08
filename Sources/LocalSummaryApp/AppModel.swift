@@ -14,6 +14,8 @@ final class AppModel: ObservableObject {
         didSet { player.load(selected.map { audioURL(for: $0) }) }
     }
     @Published var errorMessage: String?
+    /// A short confirmation shown at the bottom of the detail view, e.g. "Added 3 reminders".
+    @Published var notice: String?
 
     // Progress of the item being processed
     @Published var progress: Double?
@@ -110,10 +112,83 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: Speakers
+
+    func renameSpeaker(_ speaker: Int, to name: String, in id: Recording.ID) {
+        let t = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        update(id) { r in
+            var names = r.speakerNames ?? [:]
+            names[speaker] = (t.isEmpty || t == Speakers.defaultName(speaker)) ? nil : t
+            r.speakerNames = names.isEmpty ? nil : names
+        }
+    }
+
+    /// Transcribes again with speaker labels (for recordings made before labels existed),
+    /// then writes a new summary that can say who does what.
+    func labelSpeakers(_ id: Recording.ID) {
+        if !settings.labelSpeakers { settings.labelSpeakers = true }
+        update(id) { $0.transcript = nil; $0.speakerNames = nil; $0.status = .queued; $0.errorMessage = nil }
+        processQueue()
+    }
+
+    // MARK: Action items → Reminders / Calendar
+
+    /// Action item lines of a recording: the "Action items" section, or a voice note's tasks.
+    func actionItems(of r: Recording) -> [String] {
+        guard let s = r.summary else { return [] }
+        if r.noteKind != nil {
+            return SummaryLayout.noteBlocks(s).compactMap { if case .task(_, let t) = $0 { return t } else { return nil } }
+        }
+        return SummaryLayout.splitActions(s).actions
+    }
+
+    func sendToReminders(_ indices: [Int], in id: Recording.ID) {
+        guard let r = recordings.first(where: { $0.id == id }) else { return }
+        let lines = actionItems(of: r)
+        let picked = indices.filter { $0 < lines.count }
+        guard !picked.isEmpty else { return }
+        let items = picked.map { ActionItem(lines[$0], speakerNames: r.speakerNames) }
+        Task {
+            do {
+                let n = try await ActionItemSender.shared.addReminders(items, from: r.title)
+                update(id) { $0.sentToReminders = ($0.sentToReminders ?? []).union(picked) }
+                showNotice(n == 1 ? "Added to Reminders: \(items[0].title)" : "Added \(n) reminders")
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func addToCalendar(_ index: Int, in id: Recording.ID) {
+        guard let r = recordings.first(where: { $0.id == id }) else { return }
+        let lines = actionItems(of: r)
+        guard index < lines.count else { return }
+        let item = ActionItem(lines[index], speakerNames: r.speakerNames)
+        Task {
+            do {
+                let start = try await ActionItemSender.shared.addEvent(item, from: r.title)
+                update(id) { $0.sentToCalendar = ($0.sentToCalendar ?? []).union([index]) }
+                showNotice("Added to Calendar, \(start.formatted(date: .abbreviated, time: .shortened))")
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private var noticeTask: Task<Void, Never>?
+    func showNotice(_ text: String) {
+        notice = text
+        noticeTask?.cancel()
+        noticeTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            if !Task.isCancelled { self?.notice = nil }
+        }
+    }
+
     func copySummary(_ id: Recording.ID? = nil) {
         guard let r = recordings.first(where: { $0.id == (id ?? selection) }), let s = r.summary else { return }
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(s, forType: .string)
+        NSPasteboard.general.setString(Speakers.apply(r.speakerNames, to: s), forType: .string)
     }
 
     func exportSelected() {
@@ -221,9 +296,17 @@ final class AppModel: ObservableObject {
                 let audio = try await readableAudio(for: id)
                 try Task.checkCancellation()
                 setProgress(0.45, "Transcribing…")
-                let t = try await transcriber.transcribe(fileAt: audio, model: settings.asrModel)
+                let t = try await transcriber.transcribe(
+                    fileAt: audio, model: settings.asrModel, labelSpeakers: settings.labelSpeakers
+                ) { text in
+                    Task { @MainActor in self.setProgress(0.47, text, for: id) }
+                }
                 try Task.checkCancellation()
-                update(id) { $0.transcript = t; $0.duration = $0.duration ?? t.audioDuration }
+                update(id) {
+                    $0.transcript = t
+                    $0.duration = $0.duration ?? t.audioDuration
+                    $0.speakerNames = nil
+                }
             }
             guard let transcript = recordings.first(where: { $0.id == id })?.transcript else { return }
 
@@ -241,6 +324,8 @@ final class AppModel: ObservableObject {
                     $0.engineName = summarizer.engine.displayName
                     $0.status = .ready
                     $0.checkedActions = []
+                    $0.sentToReminders = nil
+                    $0.sentToCalendar = nil
                     if $0.titleIsAutomatic, settings.suggestTitles, !note.title.isEmpty { $0.title = note.title }
                 }
                 return
@@ -271,6 +356,8 @@ final class AppModel: ObservableObject {
                 $0.engineName = summarizer.engine.displayName
                 $0.status = .ready
                 $0.checkedActions = []
+                $0.sentToReminders = nil
+                $0.sentToCalendar = nil
             }
 
             // 3. Title (best effort)

@@ -23,6 +23,11 @@ struct Recording: Identifiable, Codable, Equatable {
     /// Set for short recordings that were turned into a voice note (nil = meeting-style summary).
     var noteKind: VoiceNote.Kind?
     var tags: [String]?
+    /// Names the user gave to "Speaker 1", "Speaker 2"… (keyed by speaker number).
+    var speakerNames: [Int: String]?
+    /// Action item indices already sent to Reminders / added to Calendar.
+    var sentToReminders: Set<Int>?
+    var sentToCalendar: Set<Int>?
 
     var tldr: String? {
         if noteKind != nil {
@@ -37,8 +42,8 @@ struct Recording: Identifiable, Codable, Equatable {
         if let d = duration { out += " · \(formatTimestamp(d))" }
         if let e = engineName { out += " · summarized by \(e)" }
         out += "_\n\n"
-        if let s = summary { out += s + "\n\n" }
-        if let t = transcript { out += "---\n\n## Transcript\n\n\(t.timestampedText)\n" }
+        if let s = summary { out += Speakers.apply(speakerNames, to: s) + "\n\n" }
+        if let t = transcript { out += "---\n\n## Transcript\n\n\(t.timestampedText(speakerNames: speakerNames))\n" }
         return out
     }
 
@@ -57,6 +62,7 @@ final class AppSettings: ObservableObject {
     @Published var serverModel: String { didSet { d.set(serverModel, forKey: "serverModel") } }
     @Published var asrModel: ASRModelChoice { didSet { d.set(asrModel.rawValue, forKey: "asrModel") } }
     @Published var suggestTitles: Bool { didSet { d.set(suggestTitles, forKey: "suggestTitles") } }
+    @Published var labelSpeakers: Bool { didSet { d.set(labelSpeakers, forKey: "labelSpeakers") } }
     @Published var voiceShortcutEnabled: Bool {
         didSet { d.set(voiceShortcutEnabled, forKey: "voiceShortcutEnabled"); AppModel.shared.applyVoiceShortcut() }
     }
@@ -67,6 +73,7 @@ final class AppSettings: ObservableObject {
         serverModel = d.string(forKey: "serverModel") ?? "qwen3:8b"
         asrModel = ASRModelChoice(rawValue: d.string(forKey: "asrModel") ?? "") ?? .multilingual
         suggestTitles = d.object(forKey: "suggestTitles") as? Bool ?? true
+        labelSpeakers = d.object(forKey: "labelSpeakers") as? Bool ?? true
         voiceShortcutEnabled = d.object(forKey: "voiceShortcutEnabled") as? Bool ?? true
     }
 

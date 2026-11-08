@@ -56,10 +56,14 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>LocalNotes adds the action items you choose to your calendar. It never reads your events.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>LocalNotes can send transcripts to a Mac on your network running Ollama or LM Studio for summaries, if you set that up in Settings.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>LocalNotes records your voice and meetings to transcribe them. Audio stays on this iPhone.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>LocalNotes adds the action items you choose to Reminders.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

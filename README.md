@@ -23,6 +23,17 @@ FluidVoice itself is a dictation app with no API for transcribing files, so this
 [FluidAudio](https://github.com/FluidInference/FluidAudio), the Swift SDK FluidVoice is built on, directly.
 The Parakeet model (~500 MB) downloads once on first run to `~/Library/Application Support/FluidAudio`, then works offline.
 
+## Speaker labels and action items
+
+- Recordings over 3 minutes get **speaker labels** (Speaker 1, Speaker 2…) from FluidAudio's offline
+  diarizer (pyannote + WeSpeaker + VBx on Core ML, ~30 MB of models downloaded once). Click or tap a
+  name in the transcript to rename it; the new name is used in the transcript, the summary and exports.
+  Turn it off in Settings, or `--no-speakers` in the CLI. Older recordings show a "Label speakers" button.
+- **Action items** can be sent to Reminders (one at a time or all at once) or Calendar. Deadlines like
+  "by Friday" or "Thursday at 3pm" become due dates. On iPhone, Calendar opens the system event sheet so
+  you pick the time; on the Mac the event is added at the said time, or 9:00 that day / tomorrow.
+- `swift test` runs the unit tests for both.
+
 ## Requirements
 
 - Apple Silicon Mac, macOS 15+ (macOS 26+ for the Apple Intelligence summarizer)
@@ -67,7 +78,6 @@ LM Studio works too: start its server and use `http://localhost:1234/v1`.
 
 ## Ideas / next steps
 
-- Speaker labels via FluidAudio's diarizer (`traits: ["Diarizer"]`, `OfflineDiarizerManager`)
 - Live transcript while recording (`SlidingWindowAsrManager`)
 - Embedded MLX model so no separate server is needed for large models
 - "Ask questions about this recording" chat

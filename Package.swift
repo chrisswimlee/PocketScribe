@@ -11,8 +11,9 @@ let package = Package(
     ],
     dependencies: [
         // FluidAudio is the on-device speech engine that powers FluidVoice
-        // (Parakeet TDT on CoreML / Apple Neural Engine). traits: [] keeps it to ASR + VAD.
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.17.7", traits: []),
+        // (Parakeet TDT on CoreML / Apple Neural Engine). The Diarizer trait adds speaker labels;
+        // TTS and the NeMo text-normalization engine stay out.
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.17.7", traits: ["Diarizer"]),
         .package(url: "https://github.com/gonzalezreal/swift-markdown-ui", from: "2.4.1"),
     ],
     targets: [
@@ -23,6 +24,11 @@ let package = Package(
         ),
         .executableTarget(
             name: "localsummary",
+            dependencies: ["LocalSummaryCore"],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        .testTarget(
+            name: "LocalSummaryCoreTests",
             dependencies: ["LocalSummaryCore"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
