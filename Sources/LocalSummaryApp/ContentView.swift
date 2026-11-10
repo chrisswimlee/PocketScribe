@@ -2,7 +2,11 @@ import LocalSummaryCore
 import SwiftUI
 import UniformTypeIdentifiers
 
-enum DetailTab: String, CaseIterable { case summary = "Summary", transcript = "Transcript" }
+enum DetailTab: String, CaseIterable {
+    case summary = "Summary", transcript = "Transcript"
+    /// Documents show their text where recordings show a transcript.
+    func label(for r: Recording) -> String { self == .transcript && r.isDocument ? "Text" : rawValue }
+}
 
 struct ContentView: View {
     @EnvironmentObject var model: AppModel
@@ -27,7 +31,7 @@ struct ContentView: View {
             }
         }
         .toolbar { toolbar }
-        .fileImporter(isPresented: $model.showImporter, allowedContentTypes: AppModel.audioTypes,
+        .fileImporter(isPresented: $model.showImporter, allowedContentTypes: AppModel.importTypes,
                       allowsMultipleSelection: true) { result in
             if case .success(let urls) = result { model.importFiles(urls) }
         }
@@ -39,7 +43,7 @@ struct ContentView: View {
             if dropTargeted {
                 RoundedRectangle(cornerRadius: 12)
                     .strokeBorder(.tint, style: StrokeStyle(lineWidth: 3, dash: [8]))
-                    .overlay(Text("Drop audio or video to transcribe").font(.title3).padding(10)
+                    .overlay(Text("Drop audio, video, PDFs, Word, PowerPoint or text files").font(.title3).padding(10)
                         .background(.regularMaterial, in: Capsule()))
                     .padding(8)
                     .allowsHitTesting(false)
@@ -56,7 +60,7 @@ struct ContentView: View {
                 if let id = model.pendingDelete { model.delete(id) }
             }
         } message: {
-            Text("The audio, transcript and summary will be removed from this Mac. This can't be undone.")
+            Text("The file, its text and summary will be removed from this Mac. This can't be undone.")
         }
         .alert("Rename Recording", isPresented: Binding(
             get: { model.pendingRename != nil }, set: { if !$0 { model.pendingRename = nil } })
@@ -72,14 +76,14 @@ struct ContentView: View {
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
         ToolbarItem(placement: .principal) {
-            if let r = model.selected, r.transcript != nil {
+            if let r = model.selected, r.transcript != nil || r.document != nil {
                 Picker("View", selection: $tab) {
-                    ForEach(DetailTab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    ForEach(DetailTab.allCases, id: \.self) { Text($0.label(for: r)).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .frame(width: 220)
-                .help("Switch between the summary and the full transcript")
+                .help("Switch between the summary and the full text")
             }
         }
         ToolbarItemGroup(placement: .primaryAction) {
@@ -90,9 +94,9 @@ struct ContentView: View {
                 .help("Share the summary and transcript")
             }
             Button { model.showImporter = true } label: {
-                Label("Upload Audio", systemImage: "plus")
+                Label("Add Files", systemImage: "plus")
             }
-            .help("Upload audio or video files (⌘O)")
+            .help("Add audio, video, PDF, Word, PowerPoint or text files (⌘O)")
             RecordButton()
         }
     }
@@ -159,13 +163,13 @@ struct EmptyDetail: View {
 
     var body: some View {
         ContentUnavailableView {
-            Label(model.recordings.isEmpty ? "Record or drop in audio" : "Nothing selected",
+            Label(model.recordings.isEmpty ? "Record, or drop in audio and documents" : "Nothing selected",
                   systemImage: "waveform.badge.mic")
         } description: {
-            Text("Press \(GlobalHotKey.displayString) anywhere to dictate a note, or record a meeting here. Everything runs on this Mac.")
+            Text("Press \(GlobalHotKey.displayString) anywhere to dictate a note, record a meeting here, or drop in a PDF, Word file or slide deck for notes. Everything runs on this Mac.")
         } actions: {
             HStack {
-                Button("Upload Audio…") { model.showImporter = true }.controlSize(.large)
+                Button("Add Files…") { model.showImporter = true }.controlSize(.large)
                 RecordButton(prominent: true)
             }
         }
@@ -185,6 +189,7 @@ struct Sidebar: View {
             $0.title.localizedCaseInsensitiveContains(q)
                 || ($0.summary?.localizedCaseInsensitiveContains(q) ?? false)
                 || ($0.transcript?.text.localizedCaseInsensitiveContains(q) ?? false)
+                || ($0.document?.text.localizedCaseInsensitiveContains(q) ?? false)
                 || ($0.tags ?? []).contains { $0.localizedCaseInsensitiveContains(q.trimmingCharacters(in: CharacterSet(charactersIn: "#"))) }
         }
     }
@@ -217,9 +222,9 @@ struct Sidebar: View {
                                 Button("Rename…") { model.pendingRename = r.id }
                                 if r.summary != nil { Button("Copy Summary") { model.copySummary(r.id) } }
                                 if r.status == .ready || r.status == .failed {
-                                    Button(r.transcript == nil ? "Transcribe Again" : "Summarize Again") { model.retry(r.id) }
+                                    Button(r.isDocument ? "Summarize Again" : r.transcript == nil ? "Transcribe Again" : "Summarize Again") { model.retry(r.id) }
                                 }
-                                Button("Show Audio in Finder") {
+                                Button(r.isDocument ? "Show File in Finder" : "Show Audio in Finder") {
                                     NSWorkspace.shared.activateFileViewerSelecting([model.audioURL(for: r)])
                                 }
                                 Divider()
@@ -274,13 +279,17 @@ struct SidebarRow: View {
             s = recording.createdAt.formatted(.dateTime.month(.abbreviated).day()) + ", " + s
         }
         if let d = recording.duration { s += " · " + formatTimestamp(d) }
+        if let doc = recording.document { s += " · " + doc.sizeDescription }
         return s
     }
 
     @ViewBuilder private var statusIcon: some View {
         switch recording.status {
         case .ready:
-            if let kind = recording.noteKind {
+            if let doc = recording.document {
+                Image(systemName: doc.kind.symbol).foregroundStyle(.secondary)
+                    .accessibilityLabel(doc.kind.label)
+            } else if let kind = recording.noteKind {
                 Image(systemName: kind.symbol).foregroundStyle(.secondary).accessibilityLabel(kind.label)
             }
         case .failed:

@@ -43,6 +43,8 @@ final class AppModel: ObservableObject {
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
 
     static let audioTypes: [UTType] = [.audio, .movie]
+    /// Everything the importer accepts: audio, video and documents.
+    static let importTypes: [UTType] = audioTypes + DocumentReader.contentTypes
 
     // MARK: Storage
 
@@ -198,15 +200,22 @@ final class AppModel: ObservableObject {
 
     // MARK: Import
 
-    /// Copies files into the library and queues them. Non-audio files are skipped.
+    /// Copies files into the library and queues them. Audio and video get transcribed;
+    /// PDFs, Word files, slide decks and text files get read. Anything else is skipped.
     func importFiles(_ urls: [URL]) {
         var added: [Recording] = []
         var skipped: [String] = []
+        var problems: [String] = []
         for url in urls {
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            guard let type = UTType(filenameExtension: url.pathExtension),
-                  Self.audioTypes.contains(where: { type.conforms(to: $0) }) else {
+            if let why = DocumentReader.unsupportedReason(fileName: url.lastPathComponent) {
+                problems.append(why)
+                continue
+            }
+            let isDocument = DocumentReader.canRead(fileName: url.lastPathComponent)
+            guard isDocument || UTType(filenameExtension: url.pathExtension).map({ type in
+                Self.audioTypes.contains(where: { type.conforms(to: $0) }) }) == true else {
                 skipped.append(url.lastPathComponent)
                 continue
             }
@@ -219,12 +228,19 @@ final class AppModel: ObservableObject {
                 continue
             }
             var r = Recording(id: id, title: url.deletingPathExtension().lastPathComponent, audioFileName: name)
-            r.duration = Self.duration(of: audioDir.appending(path: name))
+            r.originalFileName = url.lastPathComponent
+            if isDocument {
+                // A document's file name usually says what it is, so keep it as the title.
+                r.titleIsAutomatic = false
+            } else {
+                r.duration = Self.duration(of: audioDir.appending(path: name))
+            }
             added.append(r)
         }
         if !skipped.isEmpty {
-            errorMessage = "Skipped files that aren't audio or video: \(skipped.joined(separator: ", "))"
+            problems.append("Skipped files that aren't audio, video, PDF, Word, PowerPoint or text: \(skipped.joined(separator: ", "))")
         }
+        if !problems.isEmpty { errorMessage = problems.joined(separator: "\n\n") }
         guard !added.isEmpty else { return }
         for r in added { save(r) }
         recordings.insert(contentsOf: added, at: 0)
@@ -293,6 +309,7 @@ final class AppModel: ObservableObject {
     private func run(_ id: Recording.ID) async {
         guard let r = recording(id) else { return }
         let settings = self.settings
+        if r.isDocument { await runDocument(id); return }
         do {
             // 1. Transcript (skipped on "Retry summary" when we already have one)
             if r.transcript == nil {
@@ -375,6 +392,54 @@ final class AppModel: ObservableObject {
                    recording(id)?.titleIsAutomatic == true {
                     update(id) { $0.title = title }
                 }
+            }
+        } catch is CancellationError {
+            update(id) { $0.status = .failed; $0.errorMessage = "Cancelled." }
+        } catch {
+            let message = Task.isCancelled ? "Cancelled." : error.localizedDescription
+            update(id) { $0.status = .failed; $0.errorMessage = message }
+        }
+    }
+
+    /// PDF, Word, PowerPoint or text: read the text (once), then write notes and a summary.
+    private func runDocument(_ id: Recording.ID) async {
+        guard let r = recording(id) else { return }
+        let settings = self.settings
+        do {
+            if r.document == nil {
+                setProgress(0.05, "Reading \(r.originalFileName ?? "the file")…", for: id)
+                let url = audioURL(for: r)
+                let doc = try await Task.detached(priority: .userInitiated) { try DocumentReader.read(url) }.value
+                try Task.checkCancellation()
+                if doc.isEmpty { throw DocumentError.empty("No text was found in this file.") }
+                update(id) { $0.document = doc }
+            }
+            guard let doc = recording(id)?.document else { return }
+            let summarizer = Summarizer(engine: settings.engineSettings.makeEngine())
+            setProgress(0.2, "Writing notes…", for: id)
+            let summary = try await summarizer.summarize(document: doc) { p in
+                Task { @MainActor in
+                    switch p {
+                    case .summarizingChunk(let i, let n):
+                        self.setProgress(0.2 + 0.7 * Double(i - 1) / Double(n), "Reading part \(i) of \(n)…", for: id)
+                    case .combining:
+                        self.setProgress(0.92, "Writing summary…", for: id)
+                    }
+                }
+            }
+            try Task.checkCancellation()
+            update(id) {
+                $0.summary = summary
+                $0.noteKind = nil
+                $0.engineName = summarizer.engine.displayName
+                $0.status = .ready
+                $0.checkedActions = []
+                $0.sentToReminders = nil
+                $0.sentToCalendar = nil
+            }
+            if settings.suggestTitles, recording(id)?.titleIsAutomatic == true,
+               let title = try? await summarizer.suggestTitle(for: summary), !title.isEmpty {
+                update(id) { $0.title = title }
             }
         } catch is CancellationError {
             update(id) { $0.status = .failed; $0.errorMessage = "Cancelled." }

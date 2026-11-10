@@ -2,14 +2,15 @@ import Foundation
 import LocalSummaryCore
 
 let usage = """
-usage: localsummary <audio-file> [options]
+usage: localsummary <audio, video, PDF, .docx, .pptx or text file> [options]
 
   --engine apple|server     Summarizer (default: apple = on-device Apple Intelligence)
   --model NAME              Model for --engine server (default: qwen3:8b)
   --url URL                 OpenAI-compatible base URL (default: http://localhost:11434/v1)
   --asr v3|v2               Speech model: v3 multilingual (default) or v2 English-only
   --no-speakers             Don't label speakers (Speaker 1, Speaker 2…) in recordings over 3 minutes
-  --out DIR                 Where to write <name>.md (default: next to the audio file)
+  --out DIR                 Where to write <name>.md (default: next to the input file)
+  --text-only               For documents: print the extracted text and stop
 """
 
 var args = Array(CommandLine.arguments.dropFirst())
@@ -37,6 +38,39 @@ let audioURL = URL(fileURLWithPath: path)
 guard FileManager.default.fileExists(atPath: audioURL.path) else {
     FileHandle.standardError.write(Data("No such file: \(path)\n".utf8))
     exit(1)
+}
+
+// Documents: read the text, then write notes. No speech model needed.
+if DocumentReader.canRead(fileName: audioURL.lastPathComponent) {
+    do {
+        let started = Date()
+        FileHandle.standardError.write(Data("› Reading \(audioURL.lastPathComponent)…\n".utf8))
+        let doc = try DocumentReader.read(audioURL)
+        if args.contains("--text-only") {
+            print(doc.annotatedText)
+            exit(0)
+        }
+        FileHandle.standardError.write(Data("› \(doc.sizeDescription), \(doc.wordCount) words. Writing notes…\n".utf8))
+        let summarizer = Summarizer(engine: settings.makeEngine())
+        let summary = try await summarizer.summarize(document: doc) { p in
+            if case .summarizingChunk(let i, let n) = p {
+                FileHandle.standardError.write(Data("› Reading part \(i) of \(n)…\n".utf8))
+            }
+        }
+        let name = audioURL.deletingPathExtension().lastPathComponent
+        let dir = outDir ?? audioURL.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let out = dir.appending(path: "\(name).summary.md")
+        try "# \(name)\n\n_Notes from \(doc.sizeDescription) · \(summarizer.engine.displayName)_\n\n\(summary)\n"
+            .write(to: out, atomically: true, encoding: .utf8)
+        print(summary)
+        FileHandle.standardError.write(Data(String(format: "\nDone in %.1fs. Saved %@\n",
+            Date().timeIntervalSince(started), out.path).utf8))
+        exit(0)
+    } catch {
+        FileHandle.standardError.write(Data("Error: \(error.localizedDescription)\n".utf8))
+        exit(1)
+    }
 }
 
 let pipeline = Pipeline(engine: settings.makeEngine(), asrModel: asr, labelSpeakers: labelSpeakers)

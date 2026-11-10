@@ -12,6 +12,7 @@ struct LibraryView: View {
             $0.title.localizedCaseInsensitiveContains(q)
                 || ($0.summary ?? "").localizedCaseInsensitiveContains(q)
                 || ($0.transcript?.text ?? "").localizedCaseInsensitiveContains(q)
+                || ($0.document?.text ?? "").localizedCaseInsensitiveContains(q)
                 || ($0.tags ?? []).contains { $0.localizedCaseInsensitiveContains(q) }
         }
     }
@@ -46,12 +47,12 @@ struct LibraryView: View {
                     Button { model.showSettings = true } label: { Label("Settings", systemImage: "gearshape") }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { model.showImporter = true } label: { Label("Import audio", systemImage: "square.and.arrow.down") }
+                    Button { model.showImporter = true } label: { Label("Import audio or documents", systemImage: "square.and.arrow.down") }
                 }
             }
             .safeAreaInset(edge: .bottom) { RecordBar() }
         }
-        .fileImporter(isPresented: $model.showImporter, allowedContentTypes: AppModel.audioTypes,
+        .fileImporter(isPresented: $model.showImporter, allowedContentTypes: AppModel.importTypes,
                       allowsMultipleSelection: true) { result in
             if case .success(let urls) = result { model.importFiles(urls) }
         }
@@ -74,7 +75,7 @@ private struct EmptyLibrary: View {
         ContentUnavailableView {
             Label("No recordings yet", systemImage: "waveform")
         } description: {
-            Text("Record a meeting or lecture to get a transcript and summary, or hold the mic button to talk a quick note. Everything stays on this iPhone.")
+            Text("Record a meeting or lecture to get a transcript and summary, hold the mic button to talk a quick note, or import a PDF, Word file or slide deck for notes. Everything stays on this iPhone.")
         }
     }
 }
@@ -88,12 +89,16 @@ struct RecordingRow: View {
             HStack(spacing: 6) {
                 if let kind = recording.noteKind {
                     Image(systemName: kind.symbol).foregroundStyle(.tint).font(.subheadline)
+                } else if let doc = recording.document {
+                    Image(systemName: doc.kind.symbol).foregroundStyle(.tint).font(.subheadline)
+                        .accessibilityLabel(doc.kind.label)
                 }
                 Text(recording.title).font(.headline).lineLimit(1)
             }
             HStack(spacing: 6) {
                 Text(recording.createdAt.formatted(.relative(presentation: .named)))
                 if let d = recording.duration { Text("·"); Text(formatTimestamp(d)).monospacedDigit() }
+                if let doc = recording.document { Text("·"); Text(doc.sizeDescription) }
                 ForEach(recording.tags ?? [], id: \.self) { Text("#\($0)") }
             }
             .font(.caption).foregroundStyle(.secondary).lineLimit(1)

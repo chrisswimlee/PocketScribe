@@ -26,8 +26,8 @@ struct DetailView: View {
     var body: some View {
         if let r = model.recording(id) {
             content(r)
-                .onAppear { player.load(model.audioURL(for: r)) }
-                .onChange(of: r.audioFileName) { player.load(model.audioURL(for: r)) }
+                .onAppear { player.load(r.isDocument ? nil : model.audioURL(for: r)) }
+                .onChange(of: r.audioFileName) { player.load(r.isDocument ? nil : model.audioURL(for: r)) }
                 .onDisappear { player.pause() }
         } else {
             ContentUnavailableView("Recording deleted", systemImage: "trash")
@@ -41,12 +41,15 @@ struct DetailView: View {
                 header(r)
                 if player.isAvailable { PlayerControls().padding(.vertical, 4) }
                 Picker("View", selection: $tab) {
-                    ForEach(Tab.allCases, id: \.self) { Text($0.rawValue) }
+                    ForEach(Tab.allCases, id: \.self) {
+                        Text($0 == .transcript && r.isDocument ? "Text" : $0.rawValue)
+                    }
                 }
                 .pickerStyle(.segmented)
                 switch tab {
                 case .summary: summarySection(r)
-                case .transcript: TranscriptSection(recording: r)
+                case .transcript:
+                    if let doc = r.document { DocumentTextSection(document: doc) } else { TranscriptSection(recording: r) }
                 }
             }
             .padding()
@@ -84,7 +87,7 @@ struct DetailView: View {
                 ShareLink(item: model.exportFile(for: r), preview: SharePreview(r.title)) {
                     Label("Share", systemImage: "square.and.arrow.up")
                 }
-                .disabled(r.summary == nil && r.transcript == nil)
+                .disabled(r.summary == nil && r.transcript == nil && r.document == nil)
             }
             ToolbarItem(placement: .topBarTrailing) { menu(r) }
         }
@@ -96,7 +99,8 @@ struct DetailView: View {
         .confirmationDialog("Delete “\(r.title)”?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive) { model.delete(r.id) }
         } message: {
-            Text("The audio, transcript and summary are removed from this iPhone.")
+            Text(r.isDocument ? "The file, its text and summary are removed from this iPhone."
+                 : "The audio, transcript and summary are removed from this iPhone.")
         }
     }
 
@@ -111,7 +115,7 @@ struct DetailView: View {
             }
             if r.status == .ready || r.status == .failed {
                 Button { model.retry(r.id) } label: {
-                    Label(r.transcript == nil ? "Transcribe again" : "Summarize again", systemImage: "arrow.clockwise")
+                    Label(r.transcript == nil && !r.isDocument ? "Transcribe again" : "Summarize again", systemImage: "arrow.clockwise")
                 }
             }
             Divider()
@@ -127,6 +131,7 @@ struct DetailView: View {
             HStack(spacing: 6) {
                 Text(r.createdAt.formatted(date: .abbreviated, time: .shortened))
                 if let d = r.duration { Text("·"); Text(formatTimestamp(d)).monospacedDigit() }
+                if let doc = r.document { Text("·"); Label(doc.sizeDescription, systemImage: doc.kind.symbol) }
             }
             .font(.subheadline).foregroundStyle(.secondary)
             if r.noteKind != nil || !(r.tags ?? []).isEmpty {
@@ -170,9 +175,12 @@ struct DetailView: View {
                 if r.transcript != nil {
                     Text("The transcript is saved. You can read it in the Transcript tab.")
                         .font(.footnote).foregroundStyle(.secondary)
+                } else if r.document != nil {
+                    Text("The text is saved. You can read it in the Text tab.")
+                        .font(.footnote).foregroundStyle(.secondary)
                 }
                 Button { model.retry(r.id) } label: {
-                    Label(r.transcript == nil ? "Try again" : "Try the summary again", systemImage: "arrow.clockwise")
+                    Label(r.transcript == nil && r.document == nil ? "Try again" : "Try the summary again", systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(.bordered)
             }
@@ -389,6 +397,51 @@ struct EventEditor: UIViewControllerRepresentable {
 enum SpeakerColor {
     static let palette: [Color] = [.blue, .orange, .green, .purple, .pink, .teal, .brown, .indigo]
     static func color(_ n: Int) -> Color { palette[(max(n, 1) - 1) % palette.count] }
+}
+
+/// The text of a PDF, Word file or slide deck, page by page, with find.
+struct DocumentTextSection: View {
+    let document: DocumentText
+    @State private var find = ""
+
+    private var parts: [DocumentText.Part] {
+        let q = find.trimmingCharacters(in: .whitespaces)
+        return q.isEmpty ? document.parts : document.parts.filter { $0.text.localizedCaseInsensitiveContains(q) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("Find in text", text: $find)
+                if !find.isEmpty {
+                    Text("\(parts.count)").font(.caption).foregroundStyle(.secondary)
+                    Button { find = "" } label: { Image(systemName: "xmark.circle.fill") }
+                        .foregroundStyle(.secondary).accessibilityLabel("Clear search")
+                }
+            }
+            .padding(10)
+            .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
+            if let pages = document.recognizedPages, !pages.isEmpty {
+                Label("Some pages are scans, so their text was read from the image on this iPhone. Check names and numbers.",
+                      systemImage: "text.viewfinder")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+            LazyVStack(alignment: .leading, spacing: 16) {
+                ForEach(parts) { part in
+                    VStack(alignment: .leading, spacing: 4) {
+                        if let label = document.label(part) {
+                            Text(label).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        }
+                        Text(part.text.isEmpty ? "(No text)" : part.text)
+                            .foregroundStyle(part.text.isEmpty ? .secondary : .primary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+        }
+    }
 }
 
 struct TranscriptSection: View {

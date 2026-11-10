@@ -74,3 +74,7 @@ targets:
             CFBundleTypeRole: Viewer
             LSHandlerRank: Alternate
             LSItemContentTypes: [public.audio, public.movie]
+          - CFBundleTypeName: Document
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [com.adobe.pdf, org.openxmlformats.wordprocessingml.document, org.openxmlformats.presentationml.presentation, public.plain-text, public.rtf, net.daringfireball.markdown]

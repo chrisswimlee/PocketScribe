@@ -86,7 +86,7 @@ struct AppCommands: Commands {
         CommandGroup(replacing: .newItem) {
             Button(model.isRecording ? "Stop Recording" : "New Recording") { model.toggleRecording() }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
-            Button("Upload Audio…") { model.showImporter = true }
+            Button("Add Files…") { model.showImporter = true }
                 .keyboardShortcut("o")
         }
         CommandGroup(replacing: .saveItem) {

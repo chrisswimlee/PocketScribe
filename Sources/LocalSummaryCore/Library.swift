@@ -30,6 +30,13 @@ public struct LibraryItem: Identifiable, Codable, Equatable, Sendable {
     /// Action item indices already sent to Reminders / added to Calendar.
     public var sentToReminders: Set<Int>?
     public var sentToCalendar: Set<Int>?
+    /// Text read from an imported PDF, Word file, slide deck or text file (nil for audio).
+    public var document: DocumentText?
+    /// The imported file's name, e.g. "Q3 plan.pdf".
+    public var originalFileName: String?
+
+    /// PDFs, Word files, slide decks and text files are read, not transcribed.
+    public var isDocument: Bool { DocumentReader.canRead(fileName: audioFileName) }
 
     public init(
         id: UUID = UUID(), title: String, titleIsAutomatic: Bool = true, createdAt: Date = Date(),
@@ -60,6 +67,7 @@ public struct LibraryItem: Identifiable, Codable, Equatable, Sendable {
         out += "_\n\n"
         if let s = summary { out += Speakers.apply(speakerNames, to: s) + "\n\n" }
         if let t = transcript { out += "---\n\n## Transcript\n\n\(t.timestampedText(speakerNames: speakerNames))\n" }
+        if let d = document { out += "---\n\n_Notes from \(d.sizeDescription) of \(originalFileName ?? title)._\n" }
         return out
     }
 

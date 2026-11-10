@@ -43,6 +43,7 @@ struct DetailView: View {
     private var subtitle: String {
         var parts = [recording.createdAt.formatted(date: .abbreviated, time: .shortened)]
         if let d = recording.duration { parts.append(formatTimestamp(d)) }
+        if let doc = recording.document { parts.append(doc.sizeDescription) }
         if let e = recording.engineName { parts.append(e) }
         return parts.joined(separator: " · ")
     }
@@ -50,7 +51,7 @@ struct DetailView: View {
     @ViewBuilder private var content: some View {
         if model.isWorking(on: recording.id) || recording.status == .queued {
             ProcessingView(recording: recording)
-        } else if recording.status == .failed && recording.transcript == nil {
+        } else if recording.status == .failed && recording.transcript == nil && recording.document == nil {
             FailedView(recording: recording)
         } else {
             switch tab {
@@ -67,7 +68,11 @@ struct DetailView: View {
                     .frame(maxWidth: .infinity)
                 }
             case .transcript:
-                TranscriptView(recording: recording, textSize: textSize)
+                if let doc = recording.document {
+                    DocumentTextView(document: doc, textSize: textSize)
+                } else {
+                    TranscriptView(recording: recording, textSize: textSize)
+                }
             }
         }
     }
@@ -106,7 +111,8 @@ struct FailedView: View {
     let recording: Recording
     var body: some View {
         ContentUnavailableView {
-            Label("Couldn't transcribe this file", systemImage: "exclamationmark.triangle")
+            Label(recording.isDocument ? "Couldn't read this file" : "Couldn't transcribe this file",
+                  systemImage: "exclamationmark.triangle")
         } description: {
             Text(recording.errorMessage ?? "Unknown error.")
         } actions: {
@@ -123,7 +129,7 @@ struct FailedBanner: View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
             VStack(alignment: .leading, spacing: 6) {
-                Text("The transcript is saved, but the summary failed.").font(.headline)
+                Text(recording.isDocument ? "The text is saved, but the summary failed." : "The transcript is saved, but the summary failed.").font(.headline)
                 Text(recording.errorMessage ?? "").font(.callout).foregroundStyle(.secondary)
                 HStack {
                     Button("Retry Summary") { model.retry(recording.id) }
@@ -324,6 +330,71 @@ struct SummaryBody: View {
             return t
         }
         return (lines[..<start].joined(separator: "\n"), items, lines[end...].joined(separator: "\n"))
+    }
+}
+
+// MARK: - Document text
+
+/// The text of a PDF, Word file or slide deck, page by page, with find.
+struct DocumentTextView: View {
+    let document: DocumentText
+    let textSize: Double
+    @State private var find = ""
+    @FocusState private var findFocused: Bool
+
+    private var parts: [DocumentText.Part] {
+        let q = find.trimmingCharacters(in: .whitespaces)
+        return q.isEmpty ? document.parts : document.parts.filter { $0.text.localizedCaseInsensitiveContains(q) }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
+                TextField("Find in text", text: $find).textFieldStyle(.plain).focused($findFocused)
+                if !find.isEmpty {
+                    if let unit = document.unitName {
+                        Text("\(parts.count) \(unit.lowercased())\(parts.count == 1 ? "" : "s")")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Button { find = "" } label: { Image(systemName: "xmark.circle.fill") }
+                        .buttonStyle(.plain).foregroundStyle(.secondary).accessibilityLabel("Clear search")
+                }
+                Button("Find") { findFocused = true }.keyboardShortcut("f")
+                    .opacity(0).frame(width: 0).accessibilityHidden(true)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 8)
+            if let pages = document.recognizedPages, !pages.isEmpty {
+                Label(pages.count == document.parts.count
+                      ? "This PDF is a scan, so its text was read from the page images on this Mac. Check names and numbers."
+                      : "\(pages.count) scanned page\(pages.count == 1 ? " was" : "s were") read from the page image. Check names and numbers.",
+                      systemImage: "text.viewfinder")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16).padding(.bottom, 8)
+            }
+            Divider()
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 18) {
+                    ForEach(parts) { part in
+                        VStack(alignment: .leading, spacing: 6) {
+                            if let label = document.label(part) {
+                                Text(label).font(.system(size: textSize * 0.85, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text(part.text.isEmpty ? "(No text on this \(document.unitName?.lowercased() ?? "page"))" : part.text)
+                                .font(.system(size: textSize))
+                                .foregroundStyle(part.text.isEmpty ? .secondary : .primary)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                }
+                .frame(maxWidth: 760, alignment: .leading)
+                .padding(28)
+                .frame(maxWidth: .infinity)
+            }
+        }
     }
 }
 
