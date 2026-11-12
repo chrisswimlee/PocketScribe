@@ -2,7 +2,7 @@ import AppIntents
 import SwiftUI
 
 @main
-struct PocketPadApp: App {
+struct PocketScribeApp: App {
     @StateObject private var model = AppModel.shared
 
     var body: some Scene {
@@ -11,7 +11,7 @@ struct PocketPadApp: App {
                 .environmentObject(model)
                 .environmentObject(model.player)
                 .environmentObject(model.settings)
-                // "Open in PocketPad" / share sheet from Files, Voice Memos, Mail…
+                // "Open in Pocket Scribe" / share sheet from Files, Voice Memos, Mail…
                 .onOpenURL { url in
                     if url.isFileURL { model.importFiles([url]) }
                     else if url.host() == "voice-note" { model.startRecording(quick: true) }
@@ -47,7 +47,7 @@ struct NewRecordingIntent: AppIntent {
     }
 }
 
-struct PocketPadShortcuts: AppShortcutsProvider {
+struct PocketScribeShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
             intent: NewVoiceNoteIntent(),

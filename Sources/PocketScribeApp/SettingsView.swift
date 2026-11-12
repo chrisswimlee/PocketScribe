@@ -1,4 +1,4 @@
-import PocketPadCore
+import PocketScribeCore
 import SwiftUI
 
 struct SettingsView: View {

@@ -1,0 +1,412 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		063CC6C3BB41A56EF4D21E93 /* Support.swift in Sources */ = {isa = PBXBuildFile; fileRef = E87498E5E0EDF087245B8367 /* Support.swift */; };
+		1051CB273857F1CBC5B2E4B7 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 306C8D90826D000ABDE3BA5C /* AppModel.swift */; };
+		1F2C4D453FC9D4B5C4EA6FE0 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = 103D09BC34817FBEDF902123 /* MarkdownUI */; };
+		6154271774359C9C861DC5C3 /* PocketScribeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA2C7DC1CC91F3C82EEE9FF6 /* PocketScribeApp.swift */; };
+		62426A2377DF2548853E27A1 /* PocketScribeCore in Frameworks */ = {isa = PBXBuildFile; productRef = 2F9698436B760A09B8DB6651 /* PocketScribeCore */; };
+		A2D70E492C24D633ACCBB228 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4F73B384925AF196CFE4E7BE /* PrivacyInfo.xcprivacy */; };
+		C0BF127C800806DB5B051021 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5FDA8BB602E4D01236FDBE7 /* SettingsView.swift */; };
+		C20FCE7B60E7F717F0BAF865 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7880DBF2865B0606DA48B8C4 /* LibraryView.swift */; };
+		F4DBF765155C2F3BF5267D54 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 02D5043ED7354423AEB9238A /* Assets.xcassets */; };
+		F739597991FB5C1FED7C7732 /* DetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A00006316D88C96579EDF7A /* DetailView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		02D5043ED7354423AEB9238A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		2507100E8C37B23633A45DB7 /* PocketScribe.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PocketScribe.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2AA1AA41E195B8D042576D82 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		306C8D90826D000ABDE3BA5C /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		4F73B384925AF196CFE4E7BE /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		7880DBF2865B0606DA48B8C4 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		7A00006316D88C96579EDF7A /* DetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailView.swift; sourceTree = "<group>"; };
+		94420D7C66BD3947E9BEE4DC /* localSummary */ = {isa = PBXFileReference; lastKnownFileType = folder; name = localSummary; path = ..; sourceTree = SOURCE_ROOT; };
+		D5FDA8BB602E4D01236FDBE7 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		DA2C7DC1CC91F3C82EEE9FF6 /* PocketScribeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketScribeApp.swift; sourceTree = "<group>"; };
+		E87498E5E0EDF087245B8367 /* Support.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Support.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		368C9860C7A153EF22235A82 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				62426A2377DF2548853E27A1 /* PocketScribeCore in Frameworks */,
+				1F2C4D453FC9D4B5C4EA6FE0 /* MarkdownUI in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		2E99782EDCB7FFE332590B52 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				2507100E8C37B23633A45DB7 /* PocketScribe.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		8CA62B551F38F22F6B606577 = {
+			isa = PBXGroup;
+			children = (
+				EE939709023DC2920E68F51F /* localSummary */,
+				A111314609227E8B064F3CC7 /* Packages */,
+				E133A60C5616F928DFDE6613 /* PocketScribe */,
+				2E99782EDCB7FFE332590B52 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A111314609227E8B064F3CC7 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				94420D7C66BD3947E9BEE4DC /* localSummary */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		A767B1FB782DB74303985DE1 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				4F73B384925AF196CFE4E7BE /* PrivacyInfo.xcprivacy */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		E133A60C5616F928DFDE6613 /* PocketScribe */ = {
+			isa = PBXGroup;
+			children = (
+				306C8D90826D000ABDE3BA5C /* AppModel.swift */,
+				02D5043ED7354423AEB9238A /* Assets.xcassets */,
+				7A00006316D88C96579EDF7A /* DetailView.swift */,
+				2AA1AA41E195B8D042576D82 /* Info.plist */,
+				7880DBF2865B0606DA48B8C4 /* LibraryView.swift */,
+				DA2C7DC1CC91F3C82EEE9FF6 /* PocketScribeApp.swift */,
+				D5FDA8BB602E4D01236FDBE7 /* SettingsView.swift */,
+				E87498E5E0EDF087245B8367 /* Support.swift */,
+			);
+			path = PocketScribe;
+			sourceTree = "<group>";
+		};
+		EE939709023DC2920E68F51F /* localSummary */ = {
+			isa = PBXGroup;
+			children = (
+				A767B1FB782DB74303985DE1 /* Resources */,
+			);
+			name = localSummary;
+			path = ..;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		000F9AB8F25BD6C2D0E43223 /* PocketScribe */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 41FDCB761C5BB08B22C8A2E2 /* Build configuration list for PBXNativeTarget "PocketScribe" */;
+			buildPhases = (
+				D3EFBF60C6EE7CF37CDF17F3 /* Sources */,
+				71DA545B4416D611E70B8B39 /* Resources */,
+				368C9860C7A153EF22235A82 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PocketScribe;
+			packageProductDependencies = (
+				2F9698436B760A09B8DB6651 /* PocketScribeCore */,
+				103D09BC34817FBEDF902123 /* MarkdownUI */,
+			);
+			productName = PocketScribe;
+			productReference = 2507100E8C37B23633A45DB7 /* PocketScribe.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AB854B58A1C22D5B74599017 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					000F9AB8F25BD6C2D0E43223 = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 28B1FFFF91E2862B437D5FEC /* Build configuration list for PBXProject "PocketScribe" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 8CA62B551F38F22F6B606577;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				AA95377D39BA65A50572C47F /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
+				06FE4D63C8E0A93C0402C671 /* XCLocalSwiftPackageReference ".." */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 2E99782EDCB7FFE332590B52 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				000F9AB8F25BD6C2D0E43223 /* PocketScribe */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		71DA545B4416D611E70B8B39 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F4DBF765155C2F3BF5267D54 /* Assets.xcassets in Resources */,
+				A2D70E492C24D633ACCBB228 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		D3EFBF60C6EE7CF37CDF17F3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1051CB273857F1CBC5B2E4B7 /* AppModel.swift in Sources */,
+				F739597991FB5C1FED7C7732 /* DetailView.swift in Sources */,
+				C20FCE7B60E7F717F0BAF865 /* LibraryView.swift in Sources */,
+				6154271774359C9C861DC5C3 /* PocketScribeApp.swift in Sources */,
+				C0BF127C800806DB5B051021 /* SettingsView.swift in Sources */,
+				063CC6C3BB41A56EF4D21E93 /* Support.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		0CC8B2E974809CF3FA094E0C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		350FDB874B4D772FA54A5CE5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = PocketScribe/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.chrisswimlee.PocketScribe;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		723628EB9F28764A2FF3A39C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		8C4B64535ED5DB53A90C9FCE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = PocketScribe/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.chrisswimlee.PocketScribe;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		28B1FFFF91E2862B437D5FEC /* Build configuration list for PBXProject "PocketScribe" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				723628EB9F28764A2FF3A39C /* Debug */,
+				0CC8B2E974809CF3FA094E0C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		41FDCB761C5BB08B22C8A2E2 /* Build configuration list for PBXNativeTarget "PocketScribe" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8C4B64535ED5DB53A90C9FCE /* Debug */,
+				350FDB874B4D772FA54A5CE5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		06FE4D63C8E0A93C0402C671 /* XCLocalSwiftPackageReference ".." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ..;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		AA95377D39BA65A50572C47F /* XCRemoteSwiftPackageReference "swift-markdown-ui" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/gonzalezreal/swift-markdown-ui";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.4.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		103D09BC34817FBEDF902123 /* MarkdownUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA95377D39BA65A50572C47F /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
+			productName = MarkdownUI;
+		};
+		2F9698436B760A09B8DB6651 /* PocketScribeCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PocketScribeCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = AB854B58A1C22D5B74599017 /* Project object */;
+}

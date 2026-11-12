@@ -54,9 +54,9 @@ public enum ActionItemError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .remindersDenied:
-            return "PocketPad isn't allowed to add reminders. Turn it on in System Settings › Privacy & Security › Reminders."
+            return "Pocket Scribe isn't allowed to add reminders. Turn it on in System Settings › Privacy & Security › Reminders."
         case .calendarDenied:
-            return "PocketPad isn't allowed to add events. Turn it on in System Settings › Privacy & Security › Calendars."
+            return "Pocket Scribe isn't allowed to add events. Turn it on in System Settings › Privacy & Security › Calendars."
         case .noDefaultList: return "There's no default Reminders list to add to."
         case .noDefaultCalendar: return "There's no default calendar to add to."
         }
@@ -81,7 +81,7 @@ public final class ActionItemSender {
             let r = EKReminder(eventStore: store)
             r.calendar = list
             r.title = item.title
-            r.notes = "From “\(recordingTitle)” in PocketPad"
+            r.notes = "From “\(recordingTitle)” in Pocket Scribe"
             r.url = link
             if let due = item.due {
                 let comps: Set<Calendar.Component> = item.dueHasTime
@@ -100,7 +100,7 @@ public final class ActionItemSender {
     public func draftEvent(_ item: ActionItem, from recordingTitle: String, link: URL? = nil) -> EKEvent {
         let e = EKEvent(eventStore: store)
         e.title = item.title
-        e.notes = "From “\(recordingTitle)” in PocketPad"
+        e.notes = "From “\(recordingTitle)” in Pocket Scribe"
         e.url = link
         let start = item.suggestedEventStart()
         e.startDate = start

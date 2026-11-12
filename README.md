@@ -1,4 +1,4 @@
-# PocketPad
+# Pocket Scribe
 
 Record or drop in an audio file, get a transcript and a structured summary. Everything runs on your Mac. No audio or text leaves the machine.
 
@@ -43,14 +43,14 @@ The Parakeet model (~500 MB) downloads once on first run to `~/Library/Applicati
 
 ```sh
 # Command line
-swift run -c release pocketpad ~/Desktop/meeting.m4a
-swift run -c release pocketpad talk.mp3 --engine server --model qwen3:8b   # via Ollama
+swift run -c release pocketscribe ~/Desktop/meeting.m4a
+swift run -c release pocketscribe talk.mp3 --engine server --model qwen3:8b   # via Ollama
 
 # Desktop app (built as a proper .app so the mic permission prompt works)
-./scripts/make-app.sh && open build/PocketPad.app
+./scripts/make-app.sh && open build/PocketScribe.app
 ```
 
-You can also open `Package.swift` in Xcode and run the `PocketPadApp` scheme.
+You can also open `Package.swift` in Xcode and run the `PocketScribeApp` scheme.
 
 ## Using a bigger local model (optional)
 
@@ -69,12 +69,12 @@ LM Studio works too: start its server and use `http://localhost:1234/v1`.
 
 | Path | What |
 |---|---|
-| `Sources/PocketPadCore/Transcriber.swift` | FluidAudio ASR wrapper, sentence segmentation |
-| `Sources/PocketPadCore/Summarizer.swift` | Prompts and map-reduce chunking |
-| `Sources/PocketPadCore/Engines.swift` | Apple Intelligence + OpenAI-compatible local server engines |
-| `Sources/PocketPadCore/Pipeline.swift` | audio → transcript → summary |
-| `Sources/pocketpad/` | CLI |
-| `Sources/PocketPadApp/` | SwiftUI app: record (with level meter + menu bar icon), upload / drag & drop / Open With, queue with progress and cancel, audio player with clickable timestamps, search, rename, export |
+| `Sources/PocketScribeCore/Transcriber.swift` | FluidAudio ASR wrapper, sentence segmentation |
+| `Sources/PocketScribeCore/Summarizer.swift` | Prompts and map-reduce chunking |
+| `Sources/PocketScribeCore/Engines.swift` | Apple Intelligence + OpenAI-compatible local server engines |
+| `Sources/PocketScribeCore/Pipeline.swift` | audio → transcript → summary |
+| `Sources/pocketscribe/` | CLI |
+| `Sources/PocketScribeApp/` | SwiftUI app: record (with level meter + menu bar icon), upload / drag & drop / Open With, queue with progress and cancel, audio player with clickable timestamps, search, rename, export |
 
 ## Ideas / next steps
 
@@ -84,18 +84,18 @@ LM Studio works too: start its server and use `http://localhost:1234/v1`.
 
 ## iPhone and iPad app (`iOS/`)
 
-A SwiftUI app (PocketPad, bundle id `dev.chrisswimlee.PocketPad`, iOS 26+) built on the same
-`PocketPadCore` library: record, import audio or video, transcript with tap-to-play timestamps, summaries
+A SwiftUI app (Pocket Scribe, bundle id `dev.chrisswimlee.PocketScribe`, iOS 26+) built on the same
+`PocketScribeCore` library: record, import audio or video, transcript with tap-to-play timestamps, summaries
 with checkable action items, and quick voice notes (tap or hold the mic button, or use the "New Voice Note"
 shortcut from Siri, Shortcuts, Spotlight or the Action button).
 
 ```sh
 brew install xcodegen          # once
-cd iOS && xcodegen && open PocketPad.xcodeproj
+cd iOS && xcodegen && open PocketScribe.xcodeproj
 ```
 
 `project.yml` is the source of truth for the Xcode project; edit it and re-run `xcodegen`.
 Summaries need Apple Intelligence (iPhone 15 Pro or newer), or a Mac on the same network running Ollama / LM Studio.
 
-Simulator testing (Debug builds only): `xcrun simctl launch booted dev.chrisswimlee.PocketPad -importPath /path/to/audio.m4a`
+Simulator testing (Debug builds only): `xcrun simctl launch booted dev.chrisswimlee.PocketScribe -importPath /path/to/audio.m4a`
 imports a file on launch; `-openFirst YES` opens the newest item; `-openSettings YES` opens Settings.

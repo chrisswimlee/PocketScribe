@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "PocketPad",
+    name: "PocketScribe",
     platforms: [.macOS(.v15), .iOS(.v17)],
     products: [
-        .library(name: "PocketPadCore", targets: ["PocketPadCore"]),
-        .executable(name: "pocketpad", targets: ["pocketpad"]),
-        .executable(name: "PocketPadApp", targets: ["PocketPadApp"]),
+        .library(name: "PocketScribeCore", targets: ["PocketScribeCore"]),
+        .executable(name: "pocketscribe", targets: ["pocketscribe"]),
+        .executable(name: "PocketScribeApp", targets: ["PocketScribeApp"]),
     ],
     dependencies: [
         // FluidAudio is the on-device speech engine that powers FluidVoice
@@ -18,23 +18,23 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "PocketPadCore",
+            name: "PocketScribeCore",
             dependencies: [.product(name: "FluidAudio", package: "FluidAudio")],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .executableTarget(
-            name: "pocketpad",
-            dependencies: ["PocketPadCore"],
+            name: "pocketscribe",
+            dependencies: ["PocketScribeCore"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
-            name: "PocketPadCoreTests",
-            dependencies: ["PocketPadCore"],
+            name: "PocketScribeCoreTests",
+            dependencies: ["PocketScribeCore"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .executableTarget(
-            name: "PocketPadApp",
-            dependencies: ["PocketPadCore", .product(name: "MarkdownUI", package: "swift-markdown-ui")],
+            name: "PocketScribeApp",
+            dependencies: ["PocketScribeCore", .product(name: "MarkdownUI", package: "swift-markdown-ui")],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
     ]

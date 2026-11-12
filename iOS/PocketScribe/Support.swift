@@ -1,6 +1,6 @@
 import AVFoundation
 import Foundation
-import PocketPadCore
+import PocketScribeCore
 
 typealias Recording = LibraryItem
 

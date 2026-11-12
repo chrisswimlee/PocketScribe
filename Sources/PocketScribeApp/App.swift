@@ -1,5 +1,5 @@
 import AppKit
-import PocketPadCore
+import PocketScribeCore
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -9,7 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.activate()
     }
 
-    /// "Open With › PocketPad" in Finder, or files dropped on the Dock icon.
+    /// "Open With › Pocket Scribe" in Finder, or files dropped on the Dock icon.
     func application(_ application: NSApplication, open urls: [URL]) {
         Task { @MainActor in AppModel.shared.importFiles(urls) }
     }
@@ -26,12 +26,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 @main
-struct PocketPadApp: App {
+struct PocketScribeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @ObservedObject private var model = AppModel.shared
 
     var body: some Scene {
-        Window("PocketPad", id: "main") {
+        Window("Pocket Scribe", id: "main") {
             ContentView()
                 .environmentObject(model)
                 .environmentObject(model.settings)
@@ -50,7 +50,7 @@ struct PocketPadApp: App {
             MenuBarContent().environmentObject(model)
         } label: {
             Image(systemName: model.isRecording ? "record.circle.fill" : "waveform")
-                .accessibilityLabel(model.isRecording ? "PocketPad, recording" : "PocketPad")
+                .accessibilityLabel(model.isRecording ? "Pocket Scribe, recording" : "Pocket Scribe")
         }
     }
 }
@@ -68,12 +68,12 @@ struct MenuBarContent: View {
             Text(model.progressText)
         }
         Divider()
-        Button("Open PocketPad") {
+        Button("Open Pocket Scribe") {
             openWindow(id: "main")
             NSApplication.shared.activate()
         }
         Divider()
-        Button("Quit PocketPad") { NSApplication.shared.terminate(nil) }
+        Button("Quit Pocket Scribe") { NSApplication.shared.terminate(nil) }
     }
 }
 

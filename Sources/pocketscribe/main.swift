@@ -1,8 +1,8 @@
 import Foundation
-import PocketPadCore
+import PocketScribeCore
 
 let usage = """
-usage: pocketpad <audio, video, PDF, .docx, .pptx or text file> [options]
+usage: pocketscribe <audio, video, PDF, .docx, .pptx or text file> [options]
 
   --engine apple|server     Summarizer (default: apple = on-device Apple Intelligence)
   --model NAME              Model for --engine server (default: qwen3:8b)

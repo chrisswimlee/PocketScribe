@@ -1,4 +1,4 @@
-import PocketPadCore
+import PocketScribeCore
 import MarkdownUI
 import SwiftUI
 

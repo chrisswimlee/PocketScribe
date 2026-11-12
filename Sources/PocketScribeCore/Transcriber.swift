@@ -130,7 +130,7 @@ public actor Transcriber {
         progress: (@Sendable (String) -> Void)? = nil
     ) async throws -> Transcript {
         try await prepare(model: model)
-        guard let manager else { throw PocketPadError.asrNotReady }
+        guard let manager else { throw PocketScribeError.asrNotReady }
         var state = TdtDecoderState.make(decoderLayers: await manager.decoderLayerCount)
         let result = try await manager.transcribe(url, decoderState: &state)
         let words = buildWordTimings(from: result.tokenTimings ?? [])
@@ -259,7 +259,7 @@ public actor SpeakerDiarizer {
     }
 }
 
-public enum PocketPadError: LocalizedError {
+public enum PocketScribeError: LocalizedError {
     case asrNotReady
     case engineUnavailable(String)
     case badResponse(String)

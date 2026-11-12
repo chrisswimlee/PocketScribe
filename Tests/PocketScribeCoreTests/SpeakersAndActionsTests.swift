@@ -1,6 +1,6 @@
 import FluidAudio
 import XCTest
-@testable import PocketPadCore
+@testable import PocketScribeCore
 
 final class SpeakersAndActionsTests: XCTestCase {
     func testRenamedSpeakersReplaceLabels() {

@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>PocketPad</string>
+	<string>Pocket Scribe</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -55,10 +55,10 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>dev.chrisswimlee.PocketPad</string>
+			<string>dev.chrisswimlee.PocketScribe</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>pocketpad</string>
+				<string>pocketscribe</string>
 			</array>
 		</dict>
 	</array>
@@ -74,13 +74,13 @@
 		<true/>
 	</dict>
 	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
-	<string>PocketPad adds the action items you choose to your calendar. It never reads your events.</string>
+	<string>Pocket Scribe adds the action items you choose to your calendar. It never reads your events.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>PocketPad can send transcripts to a Mac on your network running Ollama or LM Studio for summaries, if you set that up in Settings.</string>
+	<string>Pocket Scribe can send transcripts to a Mac on your network running Ollama or LM Studio for summaries, if you set that up in Settings.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>PocketPad records your voice and meetings to transcribe them. Audio stays on this iPhone.</string>
+	<string>Pocket Scribe records your voice and meetings to transcribe them. Audio stays on this iPhone.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
-	<string>PocketPad adds the action items you choose to Reminders.</string>
+	<string>Pocket Scribe adds the action items you choose to Reminders.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

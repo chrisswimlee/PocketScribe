@@ -1,4 +1,4 @@
-import PocketPadCore
+import PocketScribeCore
 import SwiftUI
 
 struct LibraryView: View {
@@ -40,7 +40,7 @@ struct LibraryView: View {
                     }
                 }
             }
-            .navigationTitle("PocketPad")
+            .navigationTitle("Pocket Scribe")
             .navigationDestination(for: Recording.ID.self) { id in DetailView(id: id) }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

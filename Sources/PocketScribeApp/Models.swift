@@ -1,6 +1,6 @@
 import AVFoundation
 import Foundation
-import PocketPadCore
+import PocketScribeCore
 
 /// One recording or uploaded file in the library.
 struct Recording: Identifiable, Codable, Equatable {

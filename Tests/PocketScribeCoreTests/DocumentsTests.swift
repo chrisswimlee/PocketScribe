@@ -1,5 +1,5 @@
 import XCTest
-@testable import PocketPadCore
+@testable import PocketScribeCore
 
 final class DocumentsTests: XCTestCase {
     /// Zips `files` with the system zip tool (deflate, like Office does) and returns the archive.

@@ -1,14 +1,14 @@
 # iOS app. Generate the Xcode project with:  cd iOS && xcodegen
-# The shared engine (transcription, summaries, library model) is the PocketPadCore
+# The shared engine (transcription, summaries, library model) is the PocketScribeCore
 # library in the Swift package one folder up, which the Mac app and CLI use too.
-name: PocketPad
+name: PocketScribe
 options:
   bundleIdPrefix: dev.chrisswimlee
   deploymentTarget:
     iOS: "26.0"
   createIntermediateGroups: true
 packages:
-  PocketPad:
+  PocketScribe:
     path: ..
   MarkdownUI:
     url: https://github.com/gonzalezreal/swift-markdown-ui
@@ -19,29 +19,29 @@ settings:
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
 targets:
-  PocketPad:
+  PocketScribe:
     type: application
     platform: iOS
     sources:
-      - path: PocketPad
+      - path: PocketScribe
       - path: ../Resources/PrivacyInfo.xcprivacy
         buildPhase: resources
     dependencies:
-      - package: PocketPad
-        product: PocketPadCore
+      - package: PocketScribe
+        product: PocketScribeCore
       - package: MarkdownUI
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.chrisswimlee.PocketPad
+        PRODUCT_BUNDLE_IDENTIFIER: dev.chrisswimlee.PocketScribe
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_STYLE: Automatic
         ENABLE_PREVIEWS: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
     info:
-      path: PocketPad/Info.plist
+      path: PocketScribe/Info.plist
       properties:
-        CFBundleDisplayName: PocketPad
+        CFBundleDisplayName: Pocket Scribe
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
@@ -56,18 +56,18 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        NSMicrophoneUsageDescription: PocketPad records your voice and meetings to transcribe them. Audio stays on this iPhone.
-        NSRemindersFullAccessUsageDescription: PocketPad adds the action items you choose to Reminders.
-        NSCalendarsWriteOnlyAccessUsageDescription: PocketPad adds the action items you choose to your calendar. It never reads your events.
-        NSLocalNetworkUsageDescription: PocketPad can send transcripts to a Mac on your network running Ollama or LM Studio for summaries, if you set that up in Settings.
+        NSMicrophoneUsageDescription: Pocket Scribe records your voice and meetings to transcribe them. Audio stays on this iPhone.
+        NSRemindersFullAccessUsageDescription: Pocket Scribe adds the action items you choose to Reminders.
+        NSCalendarsWriteOnlyAccessUsageDescription: Pocket Scribe adds the action items you choose to your calendar. It never reads your events.
+        NSLocalNetworkUsageDescription: Pocket Scribe can send transcripts to a Mac on your network running Ollama or LM Studio for summaries, if you set that up in Settings.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         UIBackgroundModes:
           - audio
         ITSAppUsesNonExemptEncryption: false
         CFBundleURLTypes:
-          - CFBundleURLName: dev.chrisswimlee.PocketPad
-            CFBundleURLSchemes: [pocketpad]
+          - CFBundleURLName: dev.chrisswimlee.PocketScribe
+            CFBundleURLSchemes: [pocketscribe]
         LSSupportsOpeningDocumentsInPlace: false
         CFBundleDocumentTypes:
           - CFBundleTypeName: Audio
