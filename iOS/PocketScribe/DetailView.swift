@@ -22,6 +22,8 @@ struct DetailView: View {
     @State private var renaming = false
     @State private var newTitle = ""
     @State private var confirmDelete = false
+    /// A page or slide tapped in the notes ("p. 3"), shown and highlighted in the Text tab.
+    @State private var pageTarget: Int?
 
     var body: some View {
         if let r = model.recording(id) {
@@ -49,10 +51,14 @@ struct DetailView: View {
                 switch tab {
                 case .summary: summarySection(r)
                 case .transcript:
-                    if let doc = r.document { DocumentTextSection(document: doc) } else { TranscriptSection(recording: r) }
+                    if let doc = r.document { DocumentTextSection(document: doc, highlighted: pageTarget) } else { TranscriptSection(recording: r) }
                 }
             }
             .padding()
+        }
+        .onChange(of: pageTarget) { _, n in
+            guard let n else { return }
+            DispatchQueue.main.async { withAnimation { proxy.scrollTo("page-\(n)", anchor: .top) } }
         }
         #if DEBUG
         // Test hook: -scrollTo actions
@@ -80,6 +86,13 @@ struct DetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .environment(\.openURL, OpenURLAction { url in
             if let s = SummaryLayout.seekSeconds(url) { player.seek(to: s); return .handled }
+            // "p. 3" / "slide 7" in a document's notes open that page in the Text tab.
+            if let n = SourceLinker.pageNumber(url) {
+                tab = .transcript
+                pageTarget = nil
+                DispatchQueue.main.async { pageTarget = n }
+                return .handled
+            }
             return .systemAction
         })
         .toolbar {
@@ -306,8 +319,29 @@ struct SummaryBody: View {
                 }
             }
             if !parts.after.isEmpty { md(parts.after) }
+            sourcesNote
         }
         .textSelection(.enabled)
+    }
+
+    /// Says whether every point links back to the recording or document, so the reader knows
+    /// what they can check and which points to double-check.
+    @ViewBuilder private var sourcesNote: some View {
+        let c = SourceLinker.coverage(of: text)
+        let source = recording.isDocument ? (recording.document?.kind == .slides ? "slide" : "page") : "moment"
+        let what = recording.isDocument ? "the document" : "the recording"
+        if c.linked > 0 {
+            Divider().padding(.top, 4)
+            if c.unlinked == 0 {
+                Label("Every point links to the \(source) it came from. Tap a \(recording.isDocument ? "page number" : "time") to check it.",
+                      systemImage: "checkmark.seal")
+                    .font(.footnote).foregroundStyle(.secondary)
+            } else {
+                Label("\(c.unlinked) point\(c.unlinked == 1 ? "" : "s") without a link couldn't be found in \(what). Double-check \(c.unlinked == 1 ? "it" : "them").",
+                      systemImage: "exclamationmark.magnifyingglass")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+        }
     }
 
     private func checkbox(_ i: Int, _ item: String) -> some View {
@@ -320,7 +354,7 @@ struct SummaryBody: View {
                     Image(systemName: done ? "checkmark.circle.fill" : "circle")
                         .foregroundStyle(done ? Color.accentColor : .secondary)
                         .font(.title3)
-                    Text((try? AttributedString(markdown: SummaryLayout.linkTimestamps(item))) ?? AttributedString(item))
+                    Text((try? AttributedString(markdown: SourceLinker.linkAll(item, pages: recording.isDocument))) ?? AttributedString(item))
                         .strikethrough(done)
                         .foregroundStyle(done ? .secondary : .primary)
                         .multilineTextAlignment(.leading)
@@ -354,7 +388,7 @@ struct SummaryBody: View {
     }
 
     private func md(_ text: String) -> some View {
-        Markdown(SummaryLayout.linkTimestamps(text))
+        Markdown(SourceLinker.linkAll(text, pages: recording.isDocument))
             .markdownTextStyle(\.link) { ForegroundColor(.accentColor); FontFamilyVariant(.monospaced) }
     }
 }
@@ -402,6 +436,8 @@ enum SpeakerColor {
 /// The text of a PDF, Word file or slide deck, page by page, with find.
 struct DocumentTextSection: View {
     let document: DocumentText
+    /// Page or slide to highlight (tapped in the notes).
+    var highlighted: Int? = nil
     @State private var find = ""
 
     private var parts: [DocumentText.Part] {
@@ -438,9 +474,14 @@ struct DocumentTextSection: View {
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .padding(highlighted == part.number ? 10 : 0)
+                    .background(highlighted == part.number ? Color.accentColor.opacity(0.12) : .clear,
+                                in: RoundedRectangle(cornerRadius: 8))
+                    .id("page-\(part.number)")
                 }
             }
         }
+        .onChange(of: highlighted) { _, n in if n != nil { find = "" } }
     }
 }
 

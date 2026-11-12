@@ -8,6 +8,8 @@ struct DetailView: View {
     let recording: Recording
     @Binding var tab: DetailTab
     @AppStorage("textSize") private var textSize: Double = 14
+    /// A page or slide the user tapped in the summary ("p. 3"), to show in the Text tab.
+    @State private var pageTarget: Int?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,6 +36,12 @@ struct DetailView: View {
             // [mm:ss] timestamps are rendered as seek://<seconds> links.
             if url.scheme == "seek", let s = url.host().flatMap(Double.init) {
                 player.seek(to: s)
+                return .handled
+            }
+            // "p. 3" / "slide 7" in a document's notes open that page in the Text tab.
+            if let n = SourceLinker.pageNumber(url) {
+                pageTarget = n
+                tab = .transcript
                 return .handled
             }
             return .systemAction
@@ -69,7 +77,7 @@ struct DetailView: View {
                 }
             case .transcript:
                 if let doc = recording.document {
-                    DocumentTextView(document: doc, textSize: textSize)
+                    DocumentTextView(document: doc, textSize: textSize, target: $pageTarget)
                 } else {
                     TranscriptView(recording: recording, textSize: textSize)
                 }
@@ -256,7 +264,7 @@ struct SummaryBody: View {
             get: { recording.checkedActions.contains(i) },
             set: { _ in model.toggleAction(i, in: recording.id) })
         ) {
-            Text((try? AttributedString(markdown: Self.linkTimestamps(item))) ?? AttributedString(item))
+            Text((try? AttributedString(markdown: SourceLinker.linkAll(item, pages: recording.isDocument))) ?? AttributedString(item))
                 .font(.system(size: textSize))
                 .strikethrough(recording.checkedActions.contains(i))
                 .foregroundStyle(recording.checkedActions.contains(i) ? .secondary : .primary)
@@ -292,12 +300,33 @@ struct SummaryBody: View {
                 }
             }
             if !parts.after.isEmpty { md(parts.after) }
+            sourcesNote
         }
         .textSelection(.enabled)
     }
 
+    /// Says whether every point links back to the recording or document, so the reader knows
+    /// what they can check and which points to double-check.
+    @ViewBuilder private var sourcesNote: some View {
+        let c = SourceLinker.coverage(of: text)
+        let source = recording.isDocument ? (recording.document?.kind == .slides ? "slide" : "page") : "moment"
+        let what = recording.isDocument ? "the document" : "the recording"
+        if c.linked > 0 {
+            Divider().padding(.top, 6)
+            if c.unlinked == 0 {
+                Label("Every point links to the \(source) it came from. Click a \(recording.isDocument ? "page number" : "time") to check it.",
+                      systemImage: "checkmark.seal")
+                    .font(.callout).foregroundStyle(.secondary)
+            } else {
+                Label("\(c.unlinked) point\(c.unlinked == 1 ? "" : "s") without a link couldn't be found in \(what). Double-check \(c.unlinked == 1 ? "it" : "them") before relying on \(c.unlinked == 1 ? "it" : "them").",
+                      systemImage: "exclamationmark.magnifyingglass")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+        }
+    }
+
     private func md(_ text: String) -> some View {
-        Markdown(Self.linkTimestamps(text))
+        Markdown(SourceLinker.linkAll(text, pages: recording.isDocument))
             .markdownTextStyle { FontSize(textSize) }
             .markdownTextStyle(\.link) { ForegroundColor(.accentColor); FontFamilyVariant(.monospaced) }
     }
@@ -339,6 +368,9 @@ struct SummaryBody: View {
 struct DocumentTextView: View {
     let document: DocumentText
     let textSize: Double
+    /// Page or slide to scroll to and highlight (set by tapping "p. 3" in the summary).
+    @Binding var target: Int?
+    @State private var highlighted: Int?
     @State private var find = ""
     @FocusState private var findFocused: Bool
 
@@ -374,6 +406,7 @@ struct DocumentTextView: View {
                     .padding(.horizontal, 16).padding(.bottom, 8)
             }
             Divider()
+            ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 18) {
                     ForEach(parts) { part in
@@ -388,13 +421,29 @@ struct DocumentTextView: View {
                                 .textSelection(.enabled)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .padding(highlighted == part.number ? 10 : 0)
+                        .background(highlighted == part.number ? Color.accentColor.opacity(0.12) : .clear,
+                                    in: RoundedRectangle(cornerRadius: 8))
+                        .id(part.number)
                     }
                 }
                 .frame(maxWidth: 760, alignment: .leading)
                 .padding(28)
                 .frame(maxWidth: .infinity)
             }
+            .onAppear { reveal(target, proxy) }
+            .onChange(of: target) { _, n in reveal(n, proxy) }
+            }
         }
+    }
+
+    private func reveal(_ n: Int?, _ proxy: ScrollViewProxy) {
+        guard let n else { return }
+        find = ""
+        highlighted = n
+        target = nil
+        // Let the list lay out the unfiltered pages first.
+        DispatchQueue.main.async { withAnimation { proxy.scrollTo(n, anchor: .top) } }
     }
 }
 

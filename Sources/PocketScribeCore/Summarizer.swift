@@ -84,7 +84,8 @@ public struct Summarizer: Sendable {
         progress: (@Sendable (SummaryProgress) -> Void)? = nil
     ) async throws -> String {
         let lines = transcript.timestampedText.components(separatedBy: "\n")
-        return try await reduce(lines: lines, isNotes: false, prompts: Self.recordingPrompts, progress: progress)
+        let summary = try await reduce(lines: lines, isNotes: false, prompts: Self.recordingPrompts, progress: progress)
+        return SourceLinker.link(summary, transcript: transcript)
     }
 
     /// Notes and a summary for a PDF, Word file, slide deck or text file.
@@ -93,7 +94,8 @@ public struct Summarizer: Sendable {
         progress: (@Sendable (SummaryProgress) -> Void)? = nil
     ) async throws -> String {
         let lines = document.annotatedText.components(separatedBy: "\n")
-        return try await reduce(lines: lines, isNotes: false, prompts: Self.documentPrompts(document), progress: progress)
+        let summary = try await reduce(lines: lines, isNotes: false, prompts: Self.documentPrompts(document), progress: progress)
+        return SourceLinker.link(summary, document: document)
     }
 
     private func reduce(

@@ -16,6 +16,9 @@ public struct ActionItem: Sendable, Equatable {
         // "[01:23](seek://83)" or "[01:23]" → gone; "[label](url)" → "label"; strip emphasis.
         text = text.replacingOccurrences(of: #"\[(?:\d{1,2}:)?\d{1,2}:\d{2}\](\([^)]*\))?"#, with: "", options: .regularExpression)
         text = text.replacingOccurrences(of: #"\[([^\]]+)\]\([^)]*\)"#, with: "$1", options: .regularExpression)
+        // "(p. 3)" / "(slide 7)" source references.
+        text = text.replacingOccurrences(of: #"\s*\((?:p\.|pp\.|pages?|slides?)\s?\d+[^()]*\)"#, with: "",
+                                         options: [.regularExpression, .caseInsensitive])
         text = text.replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "__", with: "")
 
         var due: Date?
