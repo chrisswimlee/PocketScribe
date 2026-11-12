@@ -1,9 +1,8 @@
+import AppKit
 import AVFoundation
-import EventKit
 import Foundation
-import LocalSummaryCore
+import PocketPadCore
 import SwiftUI
-import UIKit
 import UniformTypeIdentifiers
 
 @MainActor
@@ -11,9 +10,11 @@ final class AppModel: ObservableObject {
     static let shared = AppModel()
 
     @Published var recordings: [Recording] = []
-    @Published var path: [Recording.ID] = []
+    @Published var selection: Recording.ID? {
+        didSet { player.load(selected.flatMap { $0.isDocument ? nil : audioURL(for: $0) }) }
+    }
     @Published var errorMessage: String?
-    /// A short confirmation shown at the bottom of the detail screen, e.g. "Added 3 reminders".
+    /// A short confirmation shown at the bottom of the detail view, e.g. "Added 3 reminders".
     @Published var notice: String?
 
     // Progress of the item being processed
@@ -22,14 +23,13 @@ final class AppModel: ObservableObject {
 
     // Recording
     @Published var isRecording = false
-    /// A quick voice note (from the mic button, Siri, Shortcuts or the Action button), not a long recording.
-    @Published var isQuickNote = false
     @Published var recordingStartedAt: Date?
     @Published var inputLevel: Float = 0  // 0...1
-    @Published var levelHistory: [Float] = Array(repeating: 0, count: 48)
 
+    // UI requests coming from menus / menu bar
     @Published var showImporter = false
-    @Published var showSettings = false
+    @Published var pendingDelete: Recording.ID?
+    @Published var pendingRename: Recording.ID?
 
     let settings = AppSettings()
     let player = AudioPlayer()
@@ -40,17 +40,21 @@ final class AppModel: ObservableObject {
     private var currentRecordingID: Recording.ID?
     private var worker: Task<Void, Never>?
     private var workingOn: Recording.ID?
-    private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
 
     static let audioTypes: [UTType] = [.audio, .movie]
-    /// Everything the importer accepts: audio, video and documents.
+    /// Everything the importer and drag and drop accept: audio, video and documents.
     static let importTypes: [UTType] = audioTypes + DocumentReader.contentTypes
 
     // MARK: Storage
 
     static let supportDir: URL = {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appending(path: "LocalNotes", directoryHint: .isDirectory)
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let base = appSupport.appending(path: "PocketPad", directoryHint: .isDirectory)
+        // The app used to be called LocalSummary: carry its library over on first launch.
+        let old = appSupport.appending(path: "LocalSummary", directoryHint: .isDirectory)
+        if !FileManager.default.fileExists(atPath: base.path), FileManager.default.fileExists(atPath: old.path) {
+            try? FileManager.default.moveItem(at: old, to: base)
+        }
         for sub in ["Library", "Audio"] {
             try? FileManager.default.createDirectory(at: base.appending(path: sub), withIntermediateDirectories: true)
         }
@@ -60,20 +64,17 @@ final class AppModel: ObservableObject {
     private var audioDir: URL { Self.supportDir.appending(path: "Audio") }
 
     func audioURL(for r: Recording) -> URL { audioDir.appending(path: r.audioFileName) }
-    func recording(_ id: Recording.ID) -> Recording? { recordings.first { $0.id == id } }
+
+    var selected: Recording? { recordings.first { $0.id == selection } }
 
     private init() {
         load()
-        // Anything interrupted when the app was closed goes back in the queue.
+        GlobalHotKey.shared.onPress = { [weak self] in self?.voiceShortcutPressed() }
+        GlobalHotKey.shared.onRelease = { [weak self] in self?.voiceShortcutReleased() }
+        DispatchQueue.main.async { self.applyVoiceShortcut() }
+        // Anything interrupted by a quit goes back in the queue.
         for i in recordings.indices where recordings[i].status == .processing {
             recordings[i].status = .queued
-        }
-        NotificationCenter.default.addObserver(
-            forName: AVAudioSession.interruptionNotification, object: nil, queue: .main
-        ) { [weak self] note in
-            let type = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt).flatMap(AVAudioSession.InterruptionType.init)
-            // A phone call or Siri took the mic: keep what was recorded so far.
-            if type == .began { Task { @MainActor in self?.stopRecording() } }
         }
         processQueue()
     }
@@ -105,9 +106,8 @@ final class AppModel: ObservableObject {
 
     func delete(_ id: Recording.ID) {
         if workingOn == id { cancelProcessing() }
-        guard let r = recording(id) else { return }
-        path.removeAll { $0 == id }
-        if player.loadedURL == audioURL(for: r) { player.load(nil) }
+        guard let r = recordings.first(where: { $0.id == id }) else { return }
+        if selection == id { selection = nil }
         recordings.removeAll { $0.id == id }
         try? FileManager.default.removeItem(at: libraryDir.appending(path: "\(id.uuidString).json"))
         try? FileManager.default.removeItem(at: audioURL(for: r))
@@ -150,7 +150,7 @@ final class AppModel: ObservableObject {
     }
 
     func sendToReminders(_ indices: [Int], in id: Recording.ID) {
-        guard let r = recording(id) else { return }
+        guard let r = recordings.first(where: { $0.id == id }) else { return }
         let lines = actionItems(of: r)
         let picked = indices.filter { $0 < lines.count }
         guard !picked.isEmpty else { return }
@@ -159,25 +159,27 @@ final class AppModel: ObservableObject {
             do {
                 let n = try await ActionItemSender.shared.addReminders(items, from: r.title)
                 update(id) { $0.sentToReminders = ($0.sentToReminders ?? []).union(picked) }
-                showNotice(n == 1 ? "Added to Reminders" : "Added \(n) reminders")
+                showNotice(n == 1 ? "Added to Reminders: \(items[0].title)" : "Added \(n) reminders")
             } catch {
                 errorMessage = error.localizedDescription
-                    .replacingOccurrences(of: "System Settings › Privacy & Security", with: "Settings › Privacy & Security")
             }
         }
     }
 
-    /// An unsaved event for the system event editor, where the user picks the time and saves.
-    func draftEvent(_ index: Int, in id: Recording.ID) -> EKEvent? {
-        guard let r = recording(id) else { return nil }
+    func addToCalendar(_ index: Int, in id: Recording.ID) {
+        guard let r = recordings.first(where: { $0.id == id }) else { return }
         let lines = actionItems(of: r)
-        guard index < lines.count else { return nil }
-        return ActionItemSender.shared.draftEvent(ActionItem(lines[index], speakerNames: r.speakerNames), from: r.title)
-    }
-
-    func markAddedToCalendar(_ index: Int, in id: Recording.ID) {
-        update(id) { $0.sentToCalendar = ($0.sentToCalendar ?? []).union([index]) }
-        showNotice("Added to Calendar")
+        guard index < lines.count else { return }
+        let item = ActionItem(lines[index], speakerNames: r.speakerNames)
+        Task {
+            do {
+                let start = try await ActionItemSender.shared.addEvent(item, from: r.title)
+                update(id) { $0.sentToCalendar = ($0.sentToCalendar ?? []).union([index]) }
+                showNotice("Added to Calendar, \(start.formatted(date: .abbreviated, time: .shortened))")
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 
     private var noticeTask: Task<Void, Never>?
@@ -190,12 +192,20 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// A Markdown file of the summary and transcript, for the share sheet.
-    func exportFile(for r: Recording) -> URL {
-        let safe = r.title.components(separatedBy: CharacterSet(charactersIn: "/:\\?%*|\"<>")).joined(separator: "-")
-        let url = FileManager.default.temporaryDirectory.appending(path: "\(safe).md")
-        try? r.markdown.write(to: url, atomically: true, encoding: .utf8)
-        return url
+    func copySummary(_ id: Recording.ID? = nil) {
+        guard let r = recordings.first(where: { $0.id == (id ?? selection) }), let s = r.summary else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(Speakers.apply(r.speakerNames, to: s), forType: .string)
+    }
+
+    func exportSelected() {
+        guard let r = selected else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
+        panel.nameFieldStringValue = "\(r.title).md"
+        if panel.runModal() == .OK, let url = panel.url {
+            do { try r.markdown.write(to: url, atomically: true, encoding: .utf8) } catch { errorMessage = error.localizedDescription }
+        }
     }
 
     // MARK: Import
@@ -244,7 +254,7 @@ final class AppModel: ObservableObject {
         guard !added.isEmpty else { return }
         for r in added { save(r) }
         recordings.insert(contentsOf: added, at: 0)
-        if added.count == 1, let id = added.first?.id { path = [id] }
+        selection = added.first?.id
         processQueue()
     }
 
@@ -264,18 +274,19 @@ final class AppModel: ObservableObject {
         processQueue()
     }
 
-    func cancelProcessing() { worker?.cancel() }
+    func cancelProcessing() {
+        worker?.cancel()
+    }
 
     private func processQueue() {
         guard workingOn == nil,
               let next = recordings.filter({ $0.status == .queued }).min(by: { $0.createdAt < $1.createdAt })
-        else { endBackgroundTask(); return }
+        else { return }
         let id = next.id
         workingOn = id
         update(id) { $0.status = .processing; $0.errorMessage = nil }
         progress = 0
         progressText = "Starting…"
-        beginBackgroundTask()
         worker = Task { [weak self] in
             await self?.run(id)
             guard let self else { return }
@@ -283,20 +294,6 @@ final class AppModel: ObservableObject {
             self.progress = nil
             self.processQueue()
         }
-    }
-
-    /// Asks iOS for extra time so a job started just before leaving the app can finish.
-    private func beginBackgroundTask() {
-        guard backgroundTask == .invalid else { return }
-        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Transcribe") { [weak self] in
-            Task { @MainActor in self?.endBackgroundTask() }
-        }
-    }
-
-    private func endBackgroundTask() {
-        guard backgroundTask != .invalid else { return }
-        UIApplication.shared.endBackgroundTask(backgroundTask)
-        backgroundTask = .invalid
     }
 
     private func setProgress(_ value: Double?, _ text: String, for id: Recording.ID? = nil) {
@@ -307,7 +304,7 @@ final class AppModel: ObservableObject {
     }
 
     private func run(_ id: Recording.ID) async {
-        guard let r = recording(id) else { return }
+        guard let r = recordings.first(where: { $0.id == id }) else { return }
         let settings = self.settings
         if r.isDocument { await runDocument(id); return }
         do {
@@ -333,7 +330,7 @@ final class AppModel: ObservableObject {
                     $0.speakerNames = nil
                 }
             }
-            guard let transcript = recording(id)?.transcript else { return }
+            guard let transcript = recordings.first(where: { $0.id == id })?.transcript else { return }
 
             let summarizer = Summarizer(engine: settings.engineSettings.makeEngine())
 
@@ -386,10 +383,11 @@ final class AppModel: ObservableObject {
             }
 
             // 3. Title (best effort)
-            if settings.suggestTitles, !transcript.text.isEmpty, recording(id)?.titleIsAutomatic == true {
+            if settings.suggestTitles, !transcript.text.isEmpty,
+               recordings.first(where: { $0.id == id })?.titleIsAutomatic == true {
                 setProgress(0.97, "Naming…")
                 if let title = try? await summarizer.suggestTitle(for: summary), !title.isEmpty,
-                   recording(id)?.titleIsAutomatic == true {
+                   recordings.first(where: { $0.id == id })?.titleIsAutomatic == true {
                     update(id) { $0.title = title }
                 }
             }
@@ -403,7 +401,7 @@ final class AppModel: ObservableObject {
 
     /// PDF, Word, PowerPoint or text: read the text (once), then write notes and a summary.
     private func runDocument(_ id: Recording.ID) async {
-        guard let r = recording(id) else { return }
+        guard let r = recordings.first(where: { $0.id == id }) else { return }
         let settings = self.settings
         do {
             if r.document == nil {
@@ -411,10 +409,12 @@ final class AppModel: ObservableObject {
                 let url = audioURL(for: r)
                 let doc = try await Task.detached(priority: .userInitiated) { try DocumentReader.read(url) }.value
                 try Task.checkCancellation()
-                if doc.isEmpty { throw DocumentError.empty("No text was found in this file.") }
+                if doc.isEmpty {
+                    throw DocumentError.empty("No text was found in this file.")
+                }
                 update(id) { $0.document = doc }
             }
-            guard let doc = recording(id)?.document else { return }
+            guard let doc = recordings.first(where: { $0.id == id })?.document else { return }
             let summarizer = Summarizer(engine: settings.engineSettings.makeEngine())
             setProgress(0.2, "Writing notes…", for: id)
             let summary = try await summarizer.summarize(document: doc) { p in
@@ -437,7 +437,7 @@ final class AppModel: ObservableObject {
                 $0.sentToReminders = nil
                 $0.sentToCalendar = nil
             }
-            if settings.suggestTitles, recording(id)?.titleIsAutomatic == true,
+            if settings.suggestTitles, recordings.first(where: { $0.id == id })?.titleIsAutomatic == true,
                let title = try? await summarizer.suggestTitle(for: summary), !title.isEmpty {
                 update(id) { $0.title = title }
             }
@@ -452,48 +452,66 @@ final class AppModel: ObservableObject {
     /// Video files (and some containers) can't be read by AVAudioFile. Extract their audio
     /// track to .m4a once, and use that for both transcription and playback.
     private func readableAudio(for id: Recording.ID) async throws -> URL {
-        guard let r = recording(id) else { throw CancellationError() }
+        guard let r = recordings.first(where: { $0.id == id }) else { throw CancellationError() }
         let url = audioURL(for: r)
         if (try? AVAudioFile(forReading: url)) != nil { return url }
         let outName = "\(id.uuidString)-audio.m4a"
         let out = audioDir.appending(path: outName)
         try? FileManager.default.removeItem(at: out)
         guard let export = AVAssetExportSession(asset: AVURLAsset(url: url), presetName: AVAssetExportPresetAppleM4A) else {
-            throw NSError(domain: "LocalNotes", code: 2, userInfo: [NSLocalizedDescriptionKey: "This file has no audio track that can be read."])
+            throw NSError(domain: "PocketPad", code: 2, userInfo: [NSLocalizedDescriptionKey: "This file has no audio track that can be read."])
         }
         try await export.export(to: out, as: .m4a)
         try? FileManager.default.removeItem(at: url)
         update(id) { $0.audioFileName = outName; $0.duration = Self.duration(of: out) }
+        if selection == id { player.load(out) }
         return out
     }
 
-    // MARK: Recording
+    // MARK: Voice shortcut (tap to start/stop, or hold to talk)
 
-    /// Hold-to-talk: the release came before the recorder finished starting (permission prompt etc.).
+    private var shortcutDownAt: Date?
+    private var recordingFromShortcut = false
+
+    func applyVoiceShortcut() {
+        if settings.voiceShortcutEnabled { GlobalHotKey.shared.register() } else { GlobalHotKey.shared.unregister() }
+    }
+
+    private func voiceShortcutPressed() {
+        if isRecording {
+            shortcutDownAt = nil
+            stopRecording()
+        } else {
+            shortcutDownAt = Date()
+            recordingFromShortcut = true
+            pendingStopAfterStart = false
+            startRecording()
+        }
+    }
+
+    private func voiceShortcutReleased() {
+        guard let down = shortcutDownAt else { return }
+        shortcutDownAt = nil
+        // Held longer than half a second: push-to-talk, so releasing stops.
+        if Date().timeIntervalSince(down) > 0.5 {
+            if isRecording { stopRecording() } else { pendingStopAfterStart = true }
+        }
+    }
+
+    /// Release arrived before the recorder finished starting (permission prompt etc.).
     private var pendingStopAfterStart = false
 
-    func toggleRecording(quick: Bool = false) {
-        if isRecording { stopRecording() } else { startRecording(quick: quick) }
+    // MARK: Recording
+
+    func toggleRecording() {
+        if isRecording { stopRecording() } else { recordingFromShortcut = false; pendingStopAfterStart = false; startRecording() }
     }
 
-    /// Hold-to-talk on the quick note button.
-    func holdBegan() {
-        guard !isRecording else { return }
-        pendingStopAfterStart = false
-        startRecording(quick: true)
-    }
-
-    func holdEnded() {
-        if isRecording { stopRecording() } else { pendingStopAfterStart = true }
-    }
-
-    func startRecording(quick: Bool) {
-        guard !isRecording else { return }
-        player.pause()
+    private func startRecording() {
         AVAudioApplication.requestRecordPermission { granted in
             Task { @MainActor in
                 guard granted else {
-                    self.errorMessage = "Microphone access is off. Turn it on in Settings › Privacy & Security › Microphone."
+                    self.errorMessage = "Microphone access is off. Turn it on in System Settings › Privacy & Security › Microphone."
                     return
                 }
                 let id = UUID()
@@ -505,25 +523,20 @@ final class AppModel: ObservableObject {
                     AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
                 ]
                 do {
-                    let session = AVAudioSession.sharedInstance()
-                    try session.setCategory(.playAndRecord, mode: .spokenAudio, options: [.defaultToSpeaker, .allowBluetoothHFP])
-                    try session.setActive(true)
                     let r = try AVAudioRecorder(url: self.audioDir.appending(path: name), settings: settings)
                     r.isMeteringEnabled = true
                     guard r.record() else {
-                        throw NSError(domain: "LocalNotes", code: 1,
+                        throw NSError(domain: "PocketPad", code: 1,
                                       userInfo: [NSLocalizedDescriptionKey: "Couldn't start recording."])
                     }
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     self.recorder = r
                     self.currentRecordingID = id
-                    self.isQuickNote = quick
                     self.isRecording = true
                     self.recordingStartedAt = Date()
-                    self.levelHistory = Array(repeating: 0, count: self.levelHistory.count)
                     self.meterTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { _ in
                         Task { @MainActor in self.updateMeter() }
                     }
+                    if self.recordingFromShortcut { ListeningHUD.shared.show(model: self) }
                     if self.pendingStopAfterStart { self.pendingStopAfterStart = false; self.stopRecording() }
                 } catch {
                     self.errorMessage = error.localizedDescription
@@ -538,70 +551,34 @@ final class AppModel: ObservableObject {
         let db = r.averagePower(forChannel: 0)  // -160...0
         let level = max(0, min(1, (db + 50) / 50))
         inputLevel = inputLevel * 0.6 + level * 0.4
-        levelHistory.removeFirst()
-        levelHistory.append(inputLevel)
     }
 
-    /// Stops and discards the current recording.
-    func discardRecording() {
-        guard let r = recorder else { return }
-        r.stop()
-        r.deleteRecording()
-        resetRecorder()
-    }
-
-    func stopRecording() {
+    private func stopRecording() {
         guard let r = recorder, let id = currentRecordingID else { return }
         let started = recordingStartedAt ?? Date()
-        let quick = isQuickNote
         r.stop()
-        resetRecorder()
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        meterTimer?.invalidate()
+        recorder = nil
+        currentRecordingID = nil
+        isRecording = false
+        recordingStartedAt = nil
+        inputLevel = 0
         var rec = Recording(id: id, title: Recording.defaultRecordingTitle(started), createdAt: started,
                             audioFileName: r.url.lastPathComponent)
         rec.duration = Self.duration(of: r.url)
-        // An accidental tap: discard instead of cluttering the library.
-        if (rec.duration ?? 0) < 0.6 {
+        let tooShort = (rec.duration ?? 0) < 0.6
+        if recordingFromShortcut {
+            recordingFromShortcut = false
+            ListeningHUD.shared.hide(after: tooShort ? 0 : 1.4)
+        }
+        // An accidental tap of the shortcut: discard instead of cluttering the library.
+        if tooShort {
             try? FileManager.default.removeItem(at: r.url)
             return
         }
         save(rec)
         recordings.insert(rec, at: 0)
-        // Long recordings open their page; quick notes stay in the list so you can keep going.
-        if !quick { path = [id] }
+        selection = id
         processQueue()
-    }
-
-    private func resetRecorder() {
-        meterTimer?.invalidate()
-        recorder = nil
-        currentRecordingID = nil
-        isRecording = false
-        isQuickNote = false
-        recordingStartedAt = nil
-        inputLevel = 0
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-    }
-
-    // MARK: Debug hooks for simulator testing
-
-    func applyLaunchArguments() {
-        #if DEBUG
-        let args = UserDefaults.standard
-        if let p = args.string(forKey: "importPath") {
-            let url = URL(filePath: p)
-            if FileManager.default.fileExists(atPath: url.path(percentEncoded: false)),
-               !recordings.contains(where: { $0.title == url.deletingPathExtension().lastPathComponent }) {
-                importFiles([url])
-            }
-        }
-        if args.bool(forKey: "openFirst"), let first = recordings.first { path = [first.id] }
-        if let s = args.string(forKey: "openID"), let id = UUID(uuidString: s), let r = recording(id) {
-            path = [id]
-            // -sendToReminders YES: sends the opened recording's action items (grant access with simctl privacy first).
-            if args.bool(forKey: "sendToReminders") { sendToReminders(Array(actionItems(of: r).indices), in: id) }
-        }
-        if args.bool(forKey: "openSettings") { showSettings = true }
-        #endif
     }
 }

@@ -1,64 +1,8 @@
 import AVFoundation
 import Foundation
-import LocalSummaryCore
+import PocketPadCore
 
-/// One recording or uploaded file in the library.
-struct Recording: Identifiable, Codable, Equatable {
-    enum Status: String, Codable { case queued, processing, ready, failed }
-
-    var id = UUID()
-    var title: String
-    var titleIsAutomatic = true
-    var createdAt = Date()
-    /// File name inside the app's Audio folder.
-    var audioFileName: String
-    var duration: TimeInterval?
-    var status: Status = .queued
-    var errorMessage: String?
-    var transcript: Transcript?
-    var summary: String?
-    var engineName: String?
-    /// Indices (within the Action items section) the user ticked off.
-    var checkedActions: Set<Int> = []
-    /// Set for short recordings that were turned into a voice note (nil = meeting-style summary).
-    var noteKind: VoiceNote.Kind?
-    var tags: [String]?
-    /// Names the user gave to "Speaker 1", "Speaker 2"… (keyed by speaker number).
-    var speakerNames: [Int: String]?
-    /// Action item indices already sent to Reminders / added to Calendar.
-    var sentToReminders: Set<Int>?
-    var sentToCalendar: Set<Int>?
-    /// Text read from an imported PDF, Word file, slide deck or text file (nil for audio).
-    var document: DocumentText?
-    /// The imported file's name, e.g. "Q3 plan.pdf".
-    var originalFileName: String?
-
-    /// PDFs, Word files, slide decks and text files are read, not transcribed.
-    var isDocument: Bool { DocumentReader.canRead(fileName: audioFileName) }
-
-    var tldr: String? {
-        if noteKind != nil {
-            return summary?.split(separator: "\n").first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-                .map { String($0).replacingOccurrences(of: "- [ ] ", with: "") }
-        }
-        return summary.flatMap { Summarizer.section("TL;DR", in: $0) }
-    }
-
-    var markdown: String {
-        var out = "# \(title)\n\n_\(createdAt.formatted(date: .abbreviated, time: .shortened))"
-        if let d = duration { out += " · \(formatTimestamp(d))" }
-        if let e = engineName { out += " · summarized by \(e)" }
-        out += "_\n\n"
-        if let s = summary { out += Speakers.apply(speakerNames, to: s) + "\n\n" }
-        if let t = transcript { out += "---\n\n## Transcript\n\n\(t.timestampedText(speakerNames: speakerNames))\n" }
-        if let d = document { out += "---\n\n_Notes from \(d.sizeDescription) of \(originalFileName ?? title)._\n" }
-        return out
-    }
-
-    static func defaultRecordingTitle(_ date: Date) -> String {
-        "Recording, " + date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
-    }
-}
+typealias Recording = LibraryItem
 
 /// Persisted preferences. Plain UserDefaults with @Published so SwiftUI refreshes immediately.
 @MainActor
@@ -71,18 +15,14 @@ final class AppSettings: ObservableObject {
     @Published var asrModel: ASRModelChoice { didSet { d.set(asrModel.rawValue, forKey: "asrModel") } }
     @Published var suggestTitles: Bool { didSet { d.set(suggestTitles, forKey: "suggestTitles") } }
     @Published var labelSpeakers: Bool { didSet { d.set(labelSpeakers, forKey: "labelSpeakers") } }
-    @Published var voiceShortcutEnabled: Bool {
-        didSet { d.set(voiceShortcutEnabled, forKey: "voiceShortcutEnabled"); AppModel.shared.applyVoiceShortcut() }
-    }
 
     init() {
         engineKind = EngineKind(rawValue: d.string(forKey: "engineKind") ?? "") ?? .apple
-        serverURL = d.string(forKey: "serverURL") ?? LocalServerEngine.ollamaDefault.absoluteString
+        serverURL = d.string(forKey: "serverURL") ?? "http://192.168.1.10:11434/v1"
         serverModel = d.string(forKey: "serverModel") ?? "qwen3:8b"
         asrModel = ASRModelChoice(rawValue: d.string(forKey: "asrModel") ?? "") ?? .multilingual
         suggestTitles = d.object(forKey: "suggestTitles") as? Bool ?? true
         labelSpeakers = d.object(forKey: "labelSpeakers") as? Bool ?? true
-        voiceShortcutEnabled = d.object(forKey: "voiceShortcutEnabled") as? Bool ?? true
     }
 
     var engineSettings: EngineSettings {
@@ -94,7 +34,7 @@ final class AppSettings: ObservableObject {
     }
 }
 
-/// Plays the selected recording; timestamps in the UI seek it.
+/// Plays the open recording; timestamps in the UI seek it.
 @MainActor
 final class AudioPlayer: ObservableObject {
     @Published private(set) var isPlaying = false
@@ -127,6 +67,8 @@ final class AudioPlayer: ObservableObject {
 
     func play() {
         guard let p = player else { return }
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
+        try? AVAudioSession.sharedInstance().setActive(true)
         p.play()
         isPlaying = true
         timer?.invalidate()

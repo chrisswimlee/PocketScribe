@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>LocalNotes</string>
+	<string>PocketPad</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -55,10 +55,10 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>dev.chrisswimlee.LocalNotes</string>
+			<string>dev.chrisswimlee.PocketPad</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>localnotes</string>
+				<string>pocketpad</string>
 			</array>
 		</dict>
 	</array>
@@ -74,13 +74,13 @@
 		<true/>
 	</dict>
 	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
-	<string>LocalNotes adds the action items you choose to your calendar. It never reads your events.</string>
+	<string>PocketPad adds the action items you choose to your calendar. It never reads your events.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>LocalNotes can send transcripts to a Mac on your network running Ollama or LM Studio for summaries, if you set that up in Settings.</string>
+	<string>PocketPad can send transcripts to a Mac on your network running Ollama or LM Studio for summaries, if you set that up in Settings.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>LocalNotes records your voice and meetings to transcribe them. Audio stays on this iPhone.</string>
+	<string>PocketPad records your voice and meetings to transcribe them. Audio stays on this iPhone.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
-	<string>LocalNotes adds the action items you choose to Reminders.</string>
+	<string>PocketPad adds the action items you choose to Reminders.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

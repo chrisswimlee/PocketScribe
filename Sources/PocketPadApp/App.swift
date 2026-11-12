@@ -1,5 +1,5 @@
 import AppKit
-import LocalSummaryCore
+import PocketPadCore
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -9,7 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.activate()
     }
 
-    /// "Open With › LocalSummary" in Finder, or files dropped on the Dock icon.
+    /// "Open With › PocketPad" in Finder, or files dropped on the Dock icon.
     func application(_ application: NSApplication, open urls: [URL]) {
         Task { @MainActor in AppModel.shared.importFiles(urls) }
     }
@@ -26,12 +26,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 @main
-struct LocalSummaryApp: App {
+struct PocketPadApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @ObservedObject private var model = AppModel.shared
 
     var body: some Scene {
-        Window("LocalSummary", id: "main") {
+        Window("PocketPad", id: "main") {
             ContentView()
                 .environmentObject(model)
                 .environmentObject(model.settings)
@@ -50,7 +50,7 @@ struct LocalSummaryApp: App {
             MenuBarContent().environmentObject(model)
         } label: {
             Image(systemName: model.isRecording ? "record.circle.fill" : "waveform")
-                .accessibilityLabel(model.isRecording ? "LocalSummary, recording" : "LocalSummary")
+                .accessibilityLabel(model.isRecording ? "PocketPad, recording" : "PocketPad")
         }
     }
 }
@@ -68,12 +68,12 @@ struct MenuBarContent: View {
             Text(model.progressText)
         }
         Divider()
-        Button("Open LocalSummary") {
+        Button("Open PocketPad") {
             openWindow(id: "main")
             NSApplication.shared.activate()
         }
         Divider()
-        Button("Quit LocalSummary") { NSApplication.shared.terminate(nil) }
+        Button("Quit PocketPad") { NSApplication.shared.terminate(nil) }
     }
 }
 

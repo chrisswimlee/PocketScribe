@@ -2,10 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key><string>LocalSummary</string>
-    <key>CFBundleDisplayName</key><string>LocalSummary</string>
-    <key>CFBundleIdentifier</key><string>dev.chrisswimlee.LocalSummary</string>
-    <key>CFBundleExecutable</key><string>LocalSummaryApp</string>
+    <key>CFBundleName</key><string>PocketPad</string>
+    <key>CFBundleDisplayName</key><string>PocketPad</string>
+    <key>CFBundleIdentifier</key><string>dev.chrisswimlee.PocketPad</string>
+    <key>CFBundleExecutable</key><string>PocketPadApp</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>0.1.0</string>
     <key>CFBundleVersion</key><string>1</string>
@@ -19,10 +19,10 @@
         <!-- Ollama / LM Studio run over plain http on this Mac or the local network -->
         <key>NSAllowsLocalNetworking</key><true/>
     </dict>
-    <key>NSMicrophoneUsageDescription</key><string>LocalSummary listens only while you record, so it can turn your voice into notes. Audio never leaves this Mac.</string>
-    <key>NSRemindersFullAccessUsageDescription</key><string>LocalSummary adds the action items you choose to Reminders.</string>
-    <key>NSRemindersUsageDescription</key><string>LocalSummary adds the action items you choose to Reminders.</string>
-    <key>NSCalendarsWriteOnlyAccessUsageDescription</key><string>LocalSummary adds the action items you choose to your calendar. It never reads your events.</string>
+    <key>NSMicrophoneUsageDescription</key><string>PocketPad listens only while you record, so it can turn your voice into notes. Audio never leaves this Mac.</string>
+    <key>NSRemindersFullAccessUsageDescription</key><string>PocketPad adds the action items you choose to Reminders.</string>
+    <key>NSRemindersUsageDescription</key><string>PocketPad adds the action items you choose to Reminders.</string>
+    <key>NSCalendarsWriteOnlyAccessUsageDescription</key><string>PocketPad adds the action items you choose to your calendar. It never reads your events.</string>
     <key>CFBundleDocumentTypes</key>
     <array>
         <dict>

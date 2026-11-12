@@ -1,4 +1,4 @@
-import LocalSummaryCore
+import PocketPadCore
 import SwiftUI
 import UniformTypeIdentifiers
 

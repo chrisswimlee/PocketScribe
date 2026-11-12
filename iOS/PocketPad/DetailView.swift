@@ -1,6 +1,6 @@
 import EventKit
 import EventKitUI
-import LocalSummaryCore
+import PocketPadCore
 import MarkdownUI
 import SwiftUI
 

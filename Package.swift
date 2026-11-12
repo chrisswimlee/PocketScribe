@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "LocalSummary",
+    name: "PocketPad",
     platforms: [.macOS(.v15), .iOS(.v17)],
     products: [
-        .library(name: "LocalSummaryCore", targets: ["LocalSummaryCore"]),
-        .executable(name: "localsummary", targets: ["localsummary"]),
-        .executable(name: "LocalSummaryApp", targets: ["LocalSummaryApp"]),
+        .library(name: "PocketPadCore", targets: ["PocketPadCore"]),
+        .executable(name: "pocketpad", targets: ["pocketpad"]),
+        .executable(name: "PocketPadApp", targets: ["PocketPadApp"]),
     ],
     dependencies: [
         // FluidAudio is the on-device speech engine that powers FluidVoice
@@ -18,23 +18,23 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "LocalSummaryCore",
+            name: "PocketPadCore",
             dependencies: [.product(name: "FluidAudio", package: "FluidAudio")],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .executableTarget(
-            name: "localsummary",
-            dependencies: ["LocalSummaryCore"],
+            name: "pocketpad",
+            dependencies: ["PocketPadCore"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
-            name: "LocalSummaryCoreTests",
-            dependencies: ["LocalSummaryCore"],
+            name: "PocketPadCoreTests",
+            dependencies: ["PocketPadCore"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .executableTarget(
-            name: "LocalSummaryApp",
-            dependencies: ["LocalSummaryCore", .product(name: "MarkdownUI", package: "swift-markdown-ui")],
+            name: "PocketPadApp",
+            dependencies: ["PocketPadCore", .product(name: "MarkdownUI", package: "swift-markdown-ui")],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
     ]

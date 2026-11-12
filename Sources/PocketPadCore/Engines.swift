@@ -35,13 +35,13 @@ public struct AppleIntelligenceEngine: SummaryEngine {
     public func complete(system: String, prompt: String) async throws -> String {
         #if canImport(FoundationModels)
         if #available(macOS 26.0, iOS 26.0, *) {
-            if let why = Self.unavailableReason { throw LocalSummaryError.engineUnavailable(why) }
+            if let why = Self.unavailableReason { throw PocketPadError.engineUnavailable(why) }
             let session = LanguageModelSession(instructions: system)
             let response = try await session.respond(to: prompt)
             return response.content
         }
         #endif
-        throw LocalSummaryError.engineUnavailable(Self.unavailableReason ?? "unknown")
+        throw PocketPadError.engineUnavailable(Self.unavailableReason ?? "unknown")
     }
 }
 
@@ -88,15 +88,15 @@ public struct LocalServerEngine: SummaryEngine {
         do {
             (data, resp) = try await URLSession.shared.data(for: req)
         } catch {
-            throw LocalSummaryError.engineUnavailable(
+            throw PocketPadError.engineUnavailable(
                 "Could not reach \(baseURL.absoluteString). Is Ollama / LM Studio running? (\(error.localizedDescription))")
         }
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
-            throw LocalSummaryError.badResponse(String(data: data, encoding: .utf8) ?? "HTTP error")
+            throw PocketPadError.badResponse(String(data: data, encoding: .utf8) ?? "HTTP error")
         }
         let decoded = try JSONDecoder().decode(ChatResponse.self, from: data)
         guard let text = decoded.choices.first?.message.content else {
-            throw LocalSummaryError.badResponse("empty choices")
+            throw PocketPadError.badResponse("empty choices")
         }
         return Self.stripThinking(text)
     }
@@ -108,7 +108,7 @@ public struct LocalServerEngine: SummaryEngine {
         req.timeoutInterval = 5
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
-            throw LocalSummaryError.badResponse(String(data: data, encoding: .utf8) ?? "HTTP error")
+            throw PocketPadError.badResponse(String(data: data, encoding: .utf8) ?? "HTTP error")
         }
         return try JSONDecoder().decode(Models.self, from: data).data.map(\.id).sorted()
     }

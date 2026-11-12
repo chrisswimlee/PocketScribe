@@ -1,4 +1,4 @@
-import LocalSummaryCore
+import PocketPadCore
 import SwiftUI
 
 struct LibraryView: View {
@@ -40,7 +40,7 @@ struct LibraryView: View {
                     }
                 }
             }
-            .navigationTitle("LocalNotes")
+            .navigationTitle("PocketPad")
             .navigationDestination(for: Recording.ID.self) { id in DetailView(id: id) }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
