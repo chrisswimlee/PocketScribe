@@ -140,6 +140,37 @@ final class AppModel: ObservableObject {
         processQueue()
     }
 
+    /// Rewrites a recording as a note or as a meeting summary (keeps the transcript).
+    func setSummaryStyle(_ style: SummaryStyle, for id: Recording.ID) {
+        update(id) { r in
+            r.summaryStyle = style
+            // Notes made before speakers were labeled on short recordings: label them now,
+            // so the meeting summary can say who does what.
+            if style == .meeting, settings.labelSpeakers, let t = r.transcript, t.speakers.isEmpty,
+               t.audioDuration >= Speakers.minimumDuration {
+                r.transcript = nil
+                r.speakerNames = nil
+            }
+            r.status = .queued
+            r.errorMessage = nil
+        }
+        processQueue()
+    }
+
+    /// Uses the speaker names guessed from the conversation ("I'm Maria").
+    func acceptSuggestedNames(_ names: [Int: String], in id: Recording.ID) {
+        update(id) { r in
+            var all = r.speakerNames ?? [:]
+            for (n, name) in names where (all[n] ?? "").isEmpty { all[n] = name }
+            r.speakerNames = all.isEmpty ? nil : all
+            r.nameSuggestionsDismissed = true
+        }
+    }
+
+    func dismissNameSuggestions(in id: Recording.ID) {
+        update(id) { $0.nameSuggestionsDismissed = true }
+    }
+
     // MARK: Action items → Reminders / Calendar
 
     /// Action item lines of a recording: the "Action items" section, or a voice note's tasks.
@@ -330,17 +361,32 @@ final class AppModel: ObservableObject {
                     $0.transcript = t
                     $0.duration = $0.duration ?? t.audioDuration
                     $0.speakerNames = nil
+                    $0.nameSuggestionsDismissed = nil
                 }
             }
             guard let transcript = recordings.first(where: { $0.id == id })?.transcript else { return }
 
             let summarizer = Summarizer(engine: settings.engineSettings.makeEngine())
 
-            // 2a. Short recordings: clean up into a voice note instead of summarizing.
-            if !transcript.text.isEmpty, transcript.audioDuration < Summarizer.voiceNoteMaxDuration {
-                setProgress(0.6, "Writing your note…")
-                let note = try await summarizer.voiceNote(from: transcript)
-                try Task.checkCancellation()
+            // 2. A cleaned-up note for one person's quick thought, a meeting summary for a
+            //    conversation (however short) or anything long. The user can switch it.
+            let style = recordings.first(where: { $0.id == id })?.summaryStyle
+            let willNote = !transcript.text.isEmpty && (style ?? Summarizer.automaticStyle(for: transcript)) == .note
+            setProgress(willNote ? 0.6 : 0.5, willNote ? "Writing your note…" : "Summarizing…")
+            let written = try await summarizer.write(transcript, style: style) { p in
+                Task { @MainActor in
+                    switch p {
+                    case .summarizingChunk(let i, let n):
+                        self.setProgress(0.5 + 0.4 * Double(i - 1) / Double(n), "Reading part \(i) of \(n)…", for: id)
+                    case .combining:
+                        self.setProgress(0.9, "Writing summary…", for: id)
+                    }
+                }
+            }
+            try Task.checkCancellation()
+            let summary: String
+            switch written {
+            case .note(let note):
                 update(id) {
                     $0.summary = note.body
                     $0.noteKind = note.kind
@@ -353,26 +399,9 @@ final class AppModel: ObservableObject {
                     if $0.titleIsAutomatic, settings.suggestTitles, !note.title.isEmpty { $0.title = note.title }
                 }
                 return
+            case .meeting(let s):
+                summary = s
             }
-
-            // 2b. Longer recordings: meeting-style summary.
-            let summary: String
-            if transcript.text.isEmpty {
-                summary = "_No speech detected._"
-            } else {
-                setProgress(0.5, "Summarizing…")
-                summary = try await summarizer.summarize(transcript) { p in
-                    Task { @MainActor in
-                        switch p {
-                        case .summarizingChunk(let i, let n):
-                            self.setProgress(0.5 + 0.4 * Double(i - 1) / Double(n), "Reading part \(i) of \(n)…", for: id)
-                        case .combining:
-                            self.setProgress(0.9, "Writing summary…", for: id)
-                        }
-                    }
-                }
-            }
-            try Task.checkCancellation()
             update(id) {
                 $0.summary = summary
                 $0.noteKind = nil

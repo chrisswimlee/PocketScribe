@@ -101,6 +101,11 @@ struct AppCommands: Commands {
             Button("Copy Summary") { model.copySummary() }
                 .keyboardShortcut("c", modifiers: [.command, .option])
                 .disabled(model.selected?.summary == nil)
+            Button(model.selected?.noteKind != nil ? "Show as Meeting Summary" : "Show as Note") {
+                if let r = model.selected { model.setSummaryStyle(r.noteKind != nil ? .meeting : .note, for: r.id) }
+            }
+            .disabled(model.selected.map { $0.isDocument || $0.transcript?.text.isEmpty != false
+                || !($0.status == .ready || $0.status == .failed) } ?? true)
             Button("Delete Recording…") { model.pendingDelete = model.selection }
                 .disabled(model.selection == nil)
         }

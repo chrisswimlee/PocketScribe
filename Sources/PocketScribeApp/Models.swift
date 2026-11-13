@@ -32,6 +32,10 @@ struct Recording: Identifiable, Codable, Equatable {
     var document: DocumentText?
     /// The imported file's name, e.g. "Q3 plan.pdf".
     var originalFileName: String?
+    /// Note or meeting summary, when the user picked one (nil = chosen automatically).
+    var summaryStyle: SummaryStyle?
+    /// The user waved away the suggested speaker names.
+    var nameSuggestionsDismissed: Bool?
 
     /// PDFs, Word files, slide decks and text files are read, not transcribed.
     var isDocument: Bool { DocumentReader.canRead(fileName: audioFileName) }

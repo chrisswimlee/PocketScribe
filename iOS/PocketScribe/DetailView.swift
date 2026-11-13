@@ -24,6 +24,8 @@ struct DetailView: View {
     @State private var confirmDelete = false
     /// A page or slide tapped in the notes ("p. 3"), shown and highlighted in the Text tab.
     @State private var pageTarget: Int?
+    /// False once the full player has scrolled off screen; a compact bar then stays at the bottom.
+    @State private var playerOnScreen = true
 
     var body: some View {
         if let r = model.recording(id) {
@@ -41,7 +43,10 @@ struct DetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header(r)
-                if player.isAvailable { PlayerControls().padding(.vertical, 4) }
+                if player.isAvailable {
+                    PlayerControls().padding(.vertical, 4)
+                        .onScrollVisibilityChange(threshold: 0.2) { playerOnScreen = $0 }
+                }
                 Picker("View", selection: $tab) {
                     ForEach(Tab.allCases, id: \.self) {
                         Text($0 == .transcript && r.isDocument ? "Text" : $0.rawValue)
@@ -69,6 +74,13 @@ struct DetailView: View {
         }
         #endif
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if showMiniPlayer {
+                MiniPlayer()
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: playerOnScreen)
         .overlay(alignment: .bottom) {
             if let notice = model.notice {
                 Label(notice, systemImage: "checkmark.circle.fill")
@@ -76,7 +88,7 @@ struct DetailView: View {
                     .padding(.horizontal, 16).padding(.vertical, 10)
                     .background(.regularMaterial, in: Capsule())
                     .shadow(radius: 4, y: 2)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, showMiniPlayer ? 76 : 12)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -117,6 +129,8 @@ struct DetailView: View {
         }
     }
 
+    private var showMiniPlayer: Bool { player.isAvailable && !playerOnScreen }
+
     private func menu(_ r: Recording) -> some View {
         Menu {
             Button { newTitle = r.title; renaming = true } label: { Label("Rename", systemImage: "pencil") }
@@ -125,6 +139,17 @@ struct DetailView: View {
             }
             if let t = r.transcript {
                 Button { UIPasteboard.general.string = r.speakerNames == nil && t.speakers.isEmpty ? t.text : t.timestampedText(speakerNames: r.speakerNames) } label: { Label("Copy transcript", systemImage: "text.quote") }
+            }
+            if !r.isDocument, r.transcript?.text.isEmpty == false, r.status == .ready || r.status == .failed {
+                if r.noteKind != nil {
+                    Button { model.setSummaryStyle(.meeting, for: r.id) } label: {
+                        Label("Show as meeting summary", systemImage: "person.2")
+                    }
+                } else {
+                    Button { model.setSummaryStyle(.note, for: r.id) } label: {
+                        Label("Show as note", systemImage: "note.text")
+                    }
+                }
             }
             if r.status == .ready || r.status == .failed {
                 Button { model.retry(r.id) } label: {
@@ -168,6 +193,7 @@ struct DetailView: View {
     @ViewBuilder private func summarySection(_ r: Recording) -> some View {
         switch r.status {
         case .ready:
+            if r.noteKind == nil { NameSuggestionCard(recording: r) }
             if let s = r.summary { SummaryBody(recording: r, summary: s) }
             if let e = r.engineName {
                 Text("Written on this device by \(e)").font(.caption).foregroundStyle(.tertiary).padding(.top, 8)
@@ -248,6 +274,73 @@ struct PlayerControls: View {
             .font(.subheadline)
             .foregroundStyle(.secondary)
             .buttonStyle(.plain)
+        }
+    }
+}
+
+/// A slim bar pinned to the bottom while the full player is scrolled out of view, so audio
+/// started from a time deep in the summary can always be paused or followed.
+struct MiniPlayer: View {
+    @EnvironmentObject var player: AudioPlayer
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ProgressView(value: min(player.currentTime, player.duration), total: max(player.duration, 0.1))
+                .progressViewStyle(.linear)
+                .tint(.accentColor)
+                .accessibilityHidden(true)
+            HStack(spacing: 4) {
+                Button { player.toggle() } label: {
+                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.title3)
+                        .frame(width: 44, height: 44)
+                }
+                .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
+                Text("\(formatTimestamp(player.currentTime)) / \(formatTimestamp(player.duration))")
+                    .font(.subheadline).monospacedDigit().foregroundStyle(.secondary)
+                Spacer()
+                Button { player.skip(-15) } label: {
+                    Image(systemName: "gobackward.15").frame(width: 44, height: 44)
+                }
+                .accessibilityLabel("Back 15 seconds")
+                Button { player.skip(15) } label: {
+                    Image(systemName: "goforward.15").frame(width: 44, height: 44)
+                }
+                .accessibilityLabel("Forward 15 seconds")
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 8)
+        }
+        .background(.bar)
+    }
+}
+
+/// "Speaker 1 might be Maria…" with a button to use the names, guessed from people introducing
+/// themselves or being addressed in the recording.
+struct NameSuggestionCard: View {
+    @EnvironmentObject var model: AppModel
+    let recording: Recording
+
+    var body: some View {
+        let names = recording.nameSuggestionsDismissed == true ? [:]
+            : Speakers.pendingSuggestions(in: recording.transcript, names: recording.speakerNames)
+        if !names.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Label(Speakers.suggestionSentence(names), systemImage: "person.crop.circle.badge.questionmark")
+                    .font(.subheadline)
+                Text("Based on what people said in the recording.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                HStack {
+                    Button(names.count == 1 ? "Use name" : "Use names") { model.acceptSuggestedNames(names, in: recording.id) }
+                        .buttonStyle(.borderedProminent)
+                    Button("Not now") { model.dismissNameSuggestions(in: recording.id) }
+                        .buttonStyle(.bordered)
+                }
+                .controlSize(.small)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
         }
     }
 }
@@ -354,7 +447,7 @@ struct SummaryBody: View {
                     Image(systemName: done ? "checkmark.circle.fill" : "circle")
                         .foregroundStyle(done ? Color.accentColor : .secondary)
                         .font(.title3)
-                    Text((try? AttributedString(markdown: SourceLinker.linkAll(item, pages: recording.isDocument))) ?? AttributedString(item))
+                    Text(SourceLinkStyle.attributed(SourceLinker.linkAll(item, pages: recording.isDocument)))
                         .strikethrough(done)
                         .foregroundStyle(done ? .secondary : .primary)
                         .multilineTextAlignment(.leading)
@@ -378,9 +471,9 @@ struct SummaryBody: View {
                     if inCalendar { Image(systemName: "calendar") }
                     if !inReminders && !inCalendar { Image(systemName: "ellipsis.circle") }
                 }
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .frame(minWidth: 32, minHeight: 32)
+                .font(.body)
+                .foregroundStyle(inReminders || inCalendar ? Color.accentColor : .secondary)
+                .frame(minWidth: 44, minHeight: 44)
                 .contentShape(Rectangle())
             }
             .accessibilityLabel(inReminders || inCalendar ? "Sent. Send again" : "Send to Reminders or Calendar")
@@ -389,7 +482,7 @@ struct SummaryBody: View {
 
     private func md(_ text: String) -> some View {
         Markdown(SourceLinker.linkAll(text, pages: recording.isDocument))
-            .markdownTextStyle(\.link) { ForegroundColor(.accentColor); FontFamilyVariant(.monospaced) }
+            .markdownTextStyle(\.link) { ForegroundColor(.accentColor); FontWeight(.semibold); FontDigitVariant(.monospaced) }
     }
 }
 
@@ -525,6 +618,7 @@ struct TranscriptSection: View {
                 .padding(10)
                 .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
 
+                NameSuggestionCard(recording: recording)
                 speakerBar(transcript)
 
                 if transcript.segments.isEmpty {
@@ -620,5 +714,18 @@ struct TranscriptSection: View {
     private func startRename(_ n: Int) {
         newName = recording.speakerNames?[n] ?? ""
         renaming = n
+    }
+}
+
+/// Links in plain text (action items) styled like the summary's: accent color, semibold,
+/// even-width digits, so a time looks the same everywhere.
+enum SourceLinkStyle {
+    static func attributed(_ markdown: String) -> AttributedString {
+        guard var out = try? AttributedString(markdown: markdown) else { return AttributedString(markdown) }
+        for run in out.runs where run.link != nil {
+            out[run.range].font = .body.weight(.semibold).monospacedDigit()
+            out[run.range].foregroundColor = .accentColor
+        }
+        return out
     }
 }
