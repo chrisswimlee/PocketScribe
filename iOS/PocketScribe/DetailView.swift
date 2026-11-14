@@ -148,7 +148,7 @@ struct DetailView: View {
         Menu {
             Button { newTitle = r.title; renaming = true } label: { Label("Rename", systemImage: "pencil") }
             if let s = r.summary {
-                Button { UIPasteboard.general.string = Speakers.apply(r.speakerNames, to: s) } label: { Label("Copy summary", systemImage: "doc.on.doc") }
+                Button { UIPasteboard.general.string = r.displaySummary ?? s } label: { Label("Copy summary", systemImage: "doc.on.doc") }
             }
             if let t = r.transcript {
                 Button { UIPasteboard.general.string = r.speakerNames == nil && t.speakers.isEmpty ? t.text : t.timestampedText(speakerNames: r.speakerNames) } label: { Label("Copy transcript", systemImage: "text.quote") }
@@ -235,10 +235,7 @@ struct DetailView: View {
             ProgressRow(text: "Waiting for the recording ahead of it…", value: nil)
         case .processing:
             if model.isWorking(on: r.id) {
-                VStack(alignment: .leading, spacing: 10) {
-                    ProgressRow(text: model.progressText, value: model.progress)
-                    Button("Cancel", role: .cancel) { model.cancelProcessing() }.font(.subheadline)
-                }
+                ProcessingSteps(recording: r, labelSpeakers: model.settings.labelSpeakers) { tab = .transcript }
             }
         case .failed:
             VStack(alignment: .leading, spacing: 10) {
@@ -257,6 +254,84 @@ struct DetailView: View {
                 .buttonStyle(.bordered)
             }
         }
+    }
+}
+
+/// What's happening while a recording or file is processed: the steps, which one is running,
+/// roughly how long it takes, and that it's fine to leave the screen.
+private struct ProcessingSteps: View {
+    @EnvironmentObject var model: AppModel
+    let recording: Recording
+    let labelSpeakers: Bool
+    let showTranscript: () -> Void
+
+    private var steps: [String] {
+        if recording.isDocument { return ["Read the text", "Write notes"] }
+        let speakers = labelSpeakers && (recording.duration ?? 0) >= Speakers.minimumDuration
+        return speakers ? ["Transcribe", "Find who's speaking", "Summarize"] : ["Transcribe", "Summarize"]
+    }
+
+    private var current: Int {
+        if recording.isDocument { return recording.document == nil ? 0 : 1 }
+        if recording.transcript != nil { return steps.count - 1 }
+        return model.progressText.localizedCaseInsensitiveContains("speaking") ? 1 : 0
+    }
+
+    /// A rough guess from the length: speech is turned into text many times faster than it was
+    /// spoken, and a summary takes a few seconds per few minutes of talk.
+    private var estimate: String {
+        let d = recording.duration ?? 0
+        let seconds = recording.isDocument ? 30 : 20 + d * 0.06 + d / 60 * 2
+        if seconds < 60 { return "Usually takes under a minute." }
+        let minutes = Int((seconds / 60).rounded())
+        return "Usually takes about \(minutes) minute\(minutes == 1 ? "" : "s")."
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(steps.enumerated()), id: \.offset) { i, step in
+                    HStack(spacing: 10) {
+                        Group {
+                            if i < current {
+                                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                            } else if i == current {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "circle").foregroundStyle(.tertiary)
+                            }
+                        }
+                        .frame(width: 22)
+                        Text(step)
+                            .font(.body.weight(i == current ? .semibold : .regular))
+                            .foregroundStyle(i > current ? .secondary : .primary)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityValue(i < current ? "Done" : i == current ? "In progress" : "Waiting")
+                }
+            }
+            if let value = model.progress { ProgressView(value: value) }
+            HStack {
+                Text(model.progressText)
+                Spacer()
+                if let start = model.workStartedAt {
+                    TimelineView(.periodic(from: .now, by: 1)) { _ in
+                        Text(formatTimestamp(Date().timeIntervalSince(start))).monospacedDigit()
+                    }
+                }
+            }
+            .font(.subheadline).foregroundStyle(.secondary)
+            Text("\(estimate) You can leave this screen and keep using the app. If you switch to another app, iOS may pause the work until you come back.")
+                .font(.footnote).foregroundStyle(.secondary)
+            if recording.transcript != nil, !recording.isDocument {
+                Button { showTranscript() } label: { Label("Read the transcript while you wait", systemImage: "text.quote") }
+                    .font(.subheadline)
+            }
+            Button("Cancel", role: .cancel) { model.cancelProcessing() }.font(.subheadline)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
     }
 }
 
@@ -355,8 +430,7 @@ struct NameSuggestionCard: View {
     let recording: Recording
 
     var body: some View {
-        let names = recording.nameSuggestionsDismissed == true ? [:]
-            : Speakers.pendingSuggestions(in: recording.transcript, names: recording.speakerNames)
+        let names = recording.pendingNameSuggestions
         if !names.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 Label(Speakers.suggestionSentence(names), systemImage: "person.crop.circle.badge.questionmark")
@@ -388,9 +462,12 @@ struct SummaryBody: View {
     let recording: Recording
     let summary: String
     @State private var eventDraft: EventDraft?
+    @State private var momentsOpen = false
 
     /// The summary with any renamed speakers ("Speaker 2" → "Maria").
-    private var text: String { Speakers.apply(recording.speakerNames, to: summary) }
+    private var text: String {
+        recording.summary == summary ? (recording.displaySummary ?? summary) : Speakers.apply(recording.speakerNames, to: summary)
+    }
 
     var body: some View {
         Group {
@@ -418,7 +495,9 @@ struct SummaryBody: View {
     }
 
     private var summaryBody: some View {
-        let parts = SummaryLayout.splitActions(text)
+        // Notable moments repeats much of Key points, so it starts collapsed at the end.
+        let (main, moments) = SummaryLayout.extractSection("Notable moments", from: text)
+        let parts = SummaryLayout.splitActions(main)
         let unsent = parts.actions.indices.filter { recording.sentToReminders?.contains($0) != true }
         return VStack(alignment: .leading, spacing: 14) {
             if !parts.before.isEmpty { md(parts.before) }
@@ -445,6 +524,15 @@ struct SummaryBody: View {
                 }
             }
             if !parts.after.isEmpty { md(parts.after) }
+            if let moments {
+                DisclosureGroup(isExpanded: $momentsOpen) {
+                    md(moments).padding(.top, 6)
+                } label: {
+                    Text("Notable moments").font(.title3.weight(.semibold)).foregroundStyle(.primary)
+                }
+                .tint(.secondary)
+                .id("moments")
+            }
             sourcesNote
         }
         .textSelection(.enabled)
@@ -595,10 +683,25 @@ struct DocumentTextSection: View {
                         if let label = document.label(part) {
                             Text(label).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                         }
-                        Text(part.text.isEmpty ? "(No text)" : part.text)
-                            .foregroundStyle(part.text.isEmpty ? .secondary : .primary)
+                        let split = part.slideTextAndNotes
+                        Text(split.text.isEmpty ? "(No text)" : split.text)
+                            .foregroundStyle(split.text.isEmpty ? .secondary : .primary)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                        if let notes = split.notes {
+                            // Speaker notes: smaller and quieter, so they don't read as slide text.
+                            VStack(alignment: .leading, spacing: 2) {
+                                Label("Notes", systemImage: "text.bubble")
+                                    .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                                Text(notes)
+                                    .font(.subheadline).foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .padding(.leading, 10)
+                            .overlay(alignment: .leading) { Rectangle().fill(.quaternary).frame(width: 2) }
+                            .padding(.top, 4)
+                        }
                     }
                     .padding(highlighted == part.number ? 10 : 0)
                     .background(highlighted == part.number ? Color.accentColor.opacity(0.12) : .clear,

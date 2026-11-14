@@ -24,13 +24,19 @@ struct LibraryView: View {
                     EmptyLibrary()
                 } else {
                     List {
-                        ForEach(filtered) { r in
-                            NavigationLink(value: r.id) { RecordingRow(recording: r) }
-                                .swipeActions {
-                                    Button(role: .destructive) { model.delete(r.id) } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
+                        ForEach(LibrarySections.group(filtered), id: \.title) { group in
+                            Section {
+                                ForEach(group.items) { r in
+                                    NavigationLink(value: r.id) { RecordingRow(recording: r) }
+                                        .swipeActions {
+                                            Button(role: .destructive) { model.delete(r.id) } label: {
+                                                Label("Delete", systemImage: "trash")
+                                            }
+                                        }
                                 }
+                            } header: {
+                                Text(group.title)
+                            }
                         }
                         if !model.trash.isEmpty, search.isEmpty {
                             Button { model.showTrash = true } label: {
@@ -91,7 +97,7 @@ private struct EmptyLibrary: View {
         ContentUnavailableView {
             Label("No recordings yet", systemImage: "waveform")
         } description: {
-            Text("Write a note, record a meeting or lecture to get a transcript and summary, hold the mic button to talk a quick note, or import a PDF, Word file or slide deck. Everything stays on this iPhone.")
+            Text("**Record** a meeting or lecture to get a transcript, a summary and action items.\n**Quick note**: tap the mic, or hold it and talk, for a short note in your own words.\nYou can also write a note or import a PDF, Word file or slide deck. Everything stays on this iPhone.")
         }
     }
 }
@@ -103,16 +109,14 @@ struct RecordingRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                if let kind = recording.noteKind {
-                    Image(systemName: kind.symbol).foregroundStyle(.tint).font(.subheadline)
-                } else if let doc = recording.document {
-                    Image(systemName: doc.kind.symbol).foregroundStyle(.tint).font(.subheadline)
-                        .accessibilityLabel(doc.kind.label)
-                }
+                let kind = recording.itemKind
+                Image(systemName: kind.symbol).foregroundStyle(.tint).font(.subheadline)
+                    .frame(width: 20)
+                    .accessibilityLabel(kind.label)
                 Text(recording.title).font(.headline).lineLimit(1)
             }
             HStack(spacing: 6) {
-                Text(recording.createdAt.formatted(.relative(presentation: .named)))
+                Text(Self.when(recording.createdAt))
                 if let d = recording.duration { Text("·"); Text(formatTimestamp(d)).monospacedDigit() }
                 if let doc = recording.document { Text("·"); Text(doc.sizeDescription) }
                 ForEach(recording.tags ?? [], id: \.self) { Text("#\($0)") }
@@ -121,6 +125,16 @@ struct RecordingRow: View {
             status
         }
         .padding(.vertical, 2)
+    }
+
+    /// "10:42" today, "Tue 10:42" this week, "Nov 3" before that: the section header says the rest.
+    static func when(_ d: Date) -> String {
+        let cal = Calendar.current
+        if cal.isDateInToday(d) { return d.formatted(date: .omitted, time: .shortened) }
+        if let weekAgo = cal.date(byAdding: .day, value: -6, to: cal.startOfDay(for: Date())), d >= weekAgo {
+            return d.formatted(.dateTime.weekday(.abbreviated).hour().minute())
+        }
+        return d.formatted(.dateTime.month(.abbreviated).day())
     }
 
     @ViewBuilder private var status: some View {
@@ -157,26 +171,37 @@ struct RecordBar: View {
     var body: some View {
         VStack(spacing: 10) {
             if model.isRecording && model.isQuickNote { QuickNoteBanner() }
-            HStack(spacing: 28) {
+            HStack(alignment: .top, spacing: 28) {
                 Spacer()
-                Button { model.toggleRecording(quick: false) } label: {
-                    Label("Record", systemImage: "record.circle")
-                        .font(.headline)
-                        .padding(.horizontal, 22).padding(.vertical, 14)
+                VStack(spacing: 4) {
+                    Button { model.toggleRecording(quick: false) } label: {
+                        Label("Record", systemImage: "record.circle")
+                            .font(.headline)
+                            .padding(.horizontal, 22).padding(.vertical, 14)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                    .buttonBorderShape(.capsule)
+                    .disabled(model.isRecording)
+                    .accessibilityHint("Starts a long recording, such as a meeting or lecture")
+                    .frame(height: 56)
+                    caption("Meeting or lecture")
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.red)
-                .buttonBorderShape(.capsule)
-                .disabled(model.isRecording)
-                .accessibilityHint("Starts a long recording, such as a meeting or lecture")
 
-                quickNoteButton
+                VStack(spacing: 4) {
+                    quickNoteButton
+                    caption(model.isRecording && model.isQuickNote ? "Tap to finish" : "Quick note")
+                }
                 Spacer()
             }
         }
         .padding(.top, 10)
         .padding(.bottom, 6)
         .background(.bar)
+    }
+
+    private func caption(_ text: String) -> some View {
+        Text(text).font(.caption2).foregroundStyle(.secondary).accessibilityHidden(true)
     }
 
     private var quickNoteButton: some View {
@@ -206,7 +231,7 @@ struct RecordBar: View {
                     }
             )
             .disabled(model.isRecording && !model.isQuickNote)
-            .accessibilityLabel(active ? "Stop voice note" : "Voice note")
+            .accessibilityLabel(active ? "Stop quick note" : "Quick note")
             .accessibilityHint("Tap to start and stop, or hold to talk")
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { model.toggleRecording(quick: true) }

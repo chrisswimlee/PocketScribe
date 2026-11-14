@@ -240,43 +240,92 @@ public struct Summarizer: Sendable {
     }
 
     /// Small models often list one task twice, once per person who mentioned it ("Set up the
-    /// shared inbox" under two owners). Keep the first of any action items that share most of
-    /// their words.
+    /// shared inbox" under two owners). Merge action items that are the same task:
+    /// - tasks that mention different people ("send the build to Tom" / "… to David") are different;
+    /// - tasks with two different owners are only merged when their words are the same, so two
+    ///   people who each do a similar-sounding task both keep it;
+    /// - otherwise items that share most of their words are merged.
+    /// The first copy stays where it is and picks up an owner or deadline only a later copy had.
     static func mergeDuplicateActions(_ md: String) -> String {
         var lines = md.components(separatedBy: "\n")
         guard let start = lines.firstIndex(where: {
             $0.trimmingCharacters(in: .whitespaces).lowercased().hasPrefix("## action items")
         }) else { return md }
         let end = lines[(start + 1)...].firstIndex(where: { $0.hasPrefix("## ") }) ?? lines.endIndex
-        var kept: [Set<String>] = []
+        var kept: [(line: Int, task: ActionTask)] = []
         var drop: [Int] = []
         for i in (start + 1)..<end {
             let t = lines[i].trimmingCharacters(in: .whitespaces)
             guard t.hasPrefix("- ") else { continue }
-            let w = actionWords(t)
-            guard w.count >= 2 else { continue }
-            if kept.contains(where: { k in Double(k.intersection(w).count) / Double(k.union(w).count) >= 0.6 }) {
+            let task = ActionTask(t)
+            guard task.words.count >= 2 else { continue }
+            if let k = kept.firstIndex(where: { $0.task.isSameTask(as: task) }) {
                 drop.append(i)
+                lines[kept[k].line] = kept[k].task.filledIn(from: task)
+                kept[k].task = ActionTask(lines[kept[k].line])
             } else {
-                kept.append(w)
+                kept.append((i, task))
             }
         }
         for i in drop.reversed() { lines.remove(at: i) }
         return lines.joined(separator: "\n")
     }
 
-    /// The meaningful words of an action item, without its checkbox, owner, timestamps or deadline.
-    private static func actionWords(_ line: String) -> Set<String> {
-        var t = line
-        for box in ["- [ ] ", "- [x] ", "- "] where t.hasPrefix(box) { t = String(t.dropFirst(box.count)); break }
-        t = t.replacingOccurrences(of: #"\[[^\]]*\](\([^)]*\))?"#, with: " ", options: .regularExpression)
-        if let colon = t.firstIndex(of: ":"), t[..<colon].split(separator: " ").count <= 3 {
-            t = String(t[t.index(after: colon)...])
+    /// One action item line taken apart: checkbox, owner, the task's words, deadline.
+    struct ActionTask {
+        let line: String
+        let box: String
+        let owner: String?
+        let deadline: String?
+        let words: Set<String>
+        /// Capitalized words inside the task (people, products), e.g. "Tom".
+        let names: Set<String>
+
+        init(_ raw: String) {
+            line = raw.trimmingCharacters(in: .whitespaces)
+            var t = line
+            var box = "- "
+            for b in ["- [ ] ", "- [x] ", "- [X] ", "- "] where t.hasPrefix(b) { box = b; t = String(t.dropFirst(b.count)); break }
+            self.box = box
+            t = t.replacingOccurrences(of: #"\[[^\]]*\](\([^)]*\))?"#, with: " ", options: .regularExpression)
+            var owner: String?
+            if let colon = t.firstIndex(of: ":"), t[..<colon].split(separator: " ").count <= 3 {
+                owner = t[..<colon].trimmingCharacters(in: CharacterSet(charactersIn: " *_")).lowercased()
+                t = String(t[t.index(after: colon)...])
+            }
+            self.owner = owner?.isEmpty == true ? nil : owner
+            deadline = t.range(of: #"\([^)]*\)"#, options: .regularExpression).map { String(t[$0]) }
+            t = t.replacingOccurrences(of: #"\([^)]*\)"#, with: " ", options: .regularExpression)
+            let tokens = t.components(separatedBy: CharacterSet.letters.inverted).filter { !$0.isEmpty }
+            names = Set(tokens.dropFirst().filter { $0.first!.isUppercase && $0.count >= 2 })
+            let stop: Set<String> = ["the", "and", "for", "with", "our", "their", "this", "that", "will", "from", "about", "into"]
+            words = Set(tokens.map { $0.lowercased() }.filter { $0.count >= 3 && !stop.contains($0) })
         }
-        t = t.replacingOccurrences(of: #"\([^)]*\)"#, with: " ", options: .regularExpression)
-        let stop: Set<String> = ["the", "and", "for", "with", "our", "their", "this", "that", "will", "from", "about", "into"]
-        return Set(t.lowercased().components(separatedBy: CharacterSet.letters.inverted)
-            .filter { $0.count >= 3 && !stop.contains($0) })
+
+        func isSameTask(as other: ActionTask) -> Bool {
+            if names != other.names, !names.isEmpty || !other.names.isEmpty { return false }
+            if let a = owner, let b = other.owner, a != b { return words == other.words }
+            let overlap = Double(words.intersection(other.words).count) / Double(words.union(other.words).count)
+            return overlap >= 0.6
+        }
+
+        /// This line, with the owner or deadline that only `other` gave.
+        func filledIn(from other: ActionTask) -> String {
+            var out = line
+            if owner == nil, let o = other.owner, let colon = other.line.firstIndex(of: ":") {
+                let ownerText = other.line[other.line.index(other.line.startIndex, offsetBy: other.box.count)..<colon]
+                out = box + ownerText + ": " + out.dropFirst(box.count)
+            }
+            if deadline == nil, let d = other.deadline {
+                // Before any trailing source link like "[00:14](seek://14)".
+                if let link = out.range(of: #"\s*\[[^\]]*\](\([^)]*\))?\s*$"#, options: .regularExpression) {
+                    out.replaceSubrange(link, with: " " + d + out[link].replacingOccurrences(of: #"^\s*"#, with: " ", options: .regularExpression))
+                } else {
+                    out += " " + d
+                }
+            }
+            return out
+        }
     }
 
     /// Splits on line boundaries so no sentence is cut in half.
