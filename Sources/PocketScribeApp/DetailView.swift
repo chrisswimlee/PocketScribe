@@ -67,6 +67,7 @@ struct DetailView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         if recording.status == .failed { FailedBanner(recording: recording) }
+                        if recording.noteKind == nil { NameSuggestionCard(recording: recording) }
                         if let summary = recording.summary {
                             SummaryBody(recording: recording, summary: summary, textSize: textSize)
                         }
@@ -264,7 +265,7 @@ struct SummaryBody: View {
             get: { recording.checkedActions.contains(i) },
             set: { _ in model.toggleAction(i, in: recording.id) })
         ) {
-            Text((try? AttributedString(markdown: SourceLinker.linkAll(item, pages: recording.isDocument))) ?? AttributedString(item))
+            Text(SourceLinkStyle.attributed(SourceLinker.linkAll(item, pages: recording.isDocument), size: textSize))
                 .font(.system(size: textSize))
                 .strikethrough(recording.checkedActions.contains(i))
                 .foregroundStyle(recording.checkedActions.contains(i) ? .secondary : .primary)
@@ -328,7 +329,7 @@ struct SummaryBody: View {
     private func md(_ text: String) -> some View {
         Markdown(SourceLinker.linkAll(text, pages: recording.isDocument))
             .markdownTextStyle { FontSize(textSize) }
-            .markdownTextStyle(\.link) { ForegroundColor(.accentColor); FontFamilyVariant(.monospaced) }
+            .markdownTextStyle(\.link) { ForegroundColor(.accentColor); FontWeight(.semibold); FontDigitVariant(.monospaced) }
     }
 
     /// "[01:23]" → "[01:23](seek://83)"
@@ -494,6 +495,7 @@ struct TranscriptView: View {
                     .opacity(0).frame(width: 0).accessibilityHidden(true)
             }
             .padding(.horizontal, 16).padding(.vertical, 8)
+            NameSuggestionCard(recording: recording).padding(.horizontal, 16).padding(.bottom, 8)
             speakerBar
             Divider()
             if let transcript, transcript.segments.isEmpty {
@@ -649,5 +651,46 @@ struct PlayerBar: View {
         .buttonStyle(.borderless)
         .padding(.horizontal, 16).padding(.vertical, 10)
         .background(.bar)
+    }
+}
+
+/// "Speaker 1 might be Maria…" with a button to use the names, guessed from people introducing
+/// themselves or being addressed in the recording.
+struct NameSuggestionCard: View {
+    @EnvironmentObject var model: AppModel
+    let recording: Recording
+
+    var body: some View {
+        let names = recording.nameSuggestionsDismissed == true ? [:]
+            : Speakers.pendingSuggestions(in: recording.transcript, names: recording.speakerNames)
+        if !names.isEmpty {
+            HStack(spacing: 10) {
+                Image(systemName: "person.crop.circle.badge.questionmark").foregroundStyle(.tint)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Speakers.suggestionSentence(names))
+                    Text("Based on what people said in the recording.").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Not Now") { model.dismissNameSuggestions(in: recording.id) }
+                Button(names.count == 1 ? "Use Name" : "Use Names") { model.acceptSuggestedNames(names, in: recording.id) }
+                    .buttonStyle(.borderedProminent)
+            }
+            .controlSize(.small)
+            .padding(10)
+            .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+}
+
+/// Links in plain text (action items) styled like the summary's: accent color, semibold,
+/// even-width digits, so a time looks the same everywhere.
+enum SourceLinkStyle {
+    static func attributed(_ markdown: String, size: Double) -> AttributedString {
+        guard var out = try? AttributedString(markdown: markdown) else { return AttributedString(markdown) }
+        for run in out.runs where run.link != nil {
+            out[run.range].font = .system(size: size, weight: .semibold).monospacedDigit()
+            out[run.range].foregroundColor = .accentColor
+        }
+        return out
     }
 }

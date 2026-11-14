@@ -34,6 +34,10 @@ public struct LibraryItem: Identifiable, Codable, Equatable, Sendable {
     public var document: DocumentText?
     /// The imported file's name, e.g. "Q3 plan.pdf".
     public var originalFileName: String?
+    /// Note or meeting summary, when the user picked one (nil = chosen automatically).
+    public var summaryStyle: SummaryStyle?
+    /// The user waved away the suggested speaker names.
+    public var nameSuggestionsDismissed: Bool?
 
     /// PDFs, Word files, slide decks and text files are read, not transcribed.
     public var isDocument: Bool { DocumentReader.canRead(fileName: audioFileName) }

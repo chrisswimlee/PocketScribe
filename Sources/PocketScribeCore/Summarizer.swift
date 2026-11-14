@@ -24,8 +24,9 @@ public struct Summarizer: Sendable {
     Transcripts may contain recognition errors, filler words and missing punctuation; \
     infer meaning sensibly but never invent facts, names or numbers that are not in the transcript. \
     Lines start with [mm:ss] timestamps. Some lines then name who is talking, like "Speaker 2:" \
-    or a person's name; when they do, say who said or will do what, using a real name if one is \
-    clearly mentioned and the speaker label otherwise. Write in the same language as the transcript.
+    or a person's name; when they do, say who said or will do what, and refer to each person by \
+    that label exactly as written (for example "Speaker 2"), even if their real name comes up; \
+    the app shows the right name later. Write in the same language as the transcript.
     """
 
     static func finalPrompt(_ material: String, isNotes: Bool) -> String {
@@ -36,17 +37,19 @@ public struct Summarizer: Sendable {
         ## TL;DR
         Two or three sentences.
 
-        ## Key points
-        Bullet list of the most important ideas, in order.
+        ## Action items
+        One checkbox line per task, for example:
+        - [ ] Speaker 2: send the budget report (by Friday)
+        Start with the owner (the label from the transcript, like "Speaker 2", or a name if the \
+        person isn't one of the labeled speakers) when it is clear who will do it, and leave it \
+        out otherwise. List each task once, even if several people talk about it. \
+        Add the deadline in parentheses only if one was given.
 
         ## Decisions
         Bullet list of anything that was decided or agreed.
 
-        ## Action items
-        One checkbox line per task, for example:
-        - [ ] Sam: send the budget report (by Friday)
-        Start with the owner (a name, or a speaker label like "Speaker 2") when it is clear who will do it, \
-        and leave it out otherwise. Add the deadline in parentheses only if one was given.
+        ## Key points
+        Bullet list of the most important ideas, in order.
 
         ## Notable moments
         Bullet list of up to 6 moments worth revisiting, each starting with its [mm:ss] timestamp.
@@ -84,7 +87,9 @@ public struct Summarizer: Sendable {
         progress: (@Sendable (SummaryProgress) -> Void)? = nil
     ) async throws -> String {
         let lines = transcript.timestampedText.components(separatedBy: "\n")
-        let summary = try await reduce(lines: lines, isNotes: false, prompts: Self.recordingPrompts, progress: progress)
+        var summary = try await reduce(lines: lines, isNotes: false, prompts: Self.recordingPrompts, progress: progress)
+        summary = Speakers.labelOwners(summary, names: Speakers.suggestedNames(in: transcript))
+        summary = Self.mergeDuplicateActions(summary)
         return SourceLinker.link(summary, transcript: transcript)
     }
 
@@ -232,6 +237,46 @@ public struct Summarizer: Sendable {
                 return line
             }
             .joined(separator: "\n")
+    }
+
+    /// Small models often list one task twice, once per person who mentioned it ("Set up the
+    /// shared inbox" under two owners). Keep the first of any action items that share most of
+    /// their words.
+    static func mergeDuplicateActions(_ md: String) -> String {
+        var lines = md.components(separatedBy: "\n")
+        guard let start = lines.firstIndex(where: {
+            $0.trimmingCharacters(in: .whitespaces).lowercased().hasPrefix("## action items")
+        }) else { return md }
+        let end = lines[(start + 1)...].firstIndex(where: { $0.hasPrefix("## ") }) ?? lines.endIndex
+        var kept: [Set<String>] = []
+        var drop: [Int] = []
+        for i in (start + 1)..<end {
+            let t = lines[i].trimmingCharacters(in: .whitespaces)
+            guard t.hasPrefix("- ") else { continue }
+            let w = actionWords(t)
+            guard w.count >= 2 else { continue }
+            if kept.contains(where: { k in Double(k.intersection(w).count) / Double(k.union(w).count) >= 0.6 }) {
+                drop.append(i)
+            } else {
+                kept.append(w)
+            }
+        }
+        for i in drop.reversed() { lines.remove(at: i) }
+        return lines.joined(separator: "\n")
+    }
+
+    /// The meaningful words of an action item, without its checkbox, owner, timestamps or deadline.
+    private static func actionWords(_ line: String) -> Set<String> {
+        var t = line
+        for box in ["- [ ] ", "- [x] ", "- "] where t.hasPrefix(box) { t = String(t.dropFirst(box.count)); break }
+        t = t.replacingOccurrences(of: #"\[[^\]]*\](\([^)]*\))?"#, with: " ", options: .regularExpression)
+        if let colon = t.firstIndex(of: ":"), t[..<colon].split(separator: " ").count <= 3 {
+            t = String(t[t.index(after: colon)...])
+        }
+        t = t.replacingOccurrences(of: #"\([^)]*\)"#, with: " ", options: .regularExpression)
+        let stop: Set<String> = ["the", "and", "for", "with", "our", "their", "this", "that", "will", "from", "about", "into"]
+        return Set(t.lowercased().components(separatedBy: CharacterSet.letters.inverted)
+            .filter { $0.count >= 3 && !stop.contains($0) })
     }
 
     /// Splits on line boundaries so no sentence is cut in half.

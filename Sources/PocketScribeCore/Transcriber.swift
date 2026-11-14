@@ -52,8 +52,9 @@ public struct Transcript: Codable, Sendable, Equatable {
 
 /// Default speaker labels ("Speaker 1") and the user's renames.
 public enum Speakers {
-    /// Shorter recordings become single-speaker voice notes, so they skip speaker labeling.
-    public static let minimumDuration: TimeInterval = 180
+    /// Recordings shorter than this are one quick thought, so they skip speaker labeling.
+    /// Anything longer is checked, because a short recording can still be a meeting.
+    public static let minimumDuration: TimeInterval = 30
 
     public static func defaultName(_ n: Int) -> String { "Speaker \(n)" }
 
@@ -123,7 +124,7 @@ public actor Transcriber {
     }
 
     /// - Parameter labelSpeakers: also work out who spoke when (speaker diarization, on device).
-    ///   Only runs for recordings of at least `Speakers.minimumDuration`; voice notes are one person.
+    ///   Only runs for recordings of at least `Speakers.minimumDuration`.
     ///   If it fails, the transcript is returned without labels rather than failing the whole job.
     public func transcribe(
         fileAt url: URL, model: ASRModelChoice = .multilingual, labelSpeakers: Bool = false,
