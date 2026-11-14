@@ -219,7 +219,7 @@ final class AppModel: ObservableObject {
 
     /// The text the editor starts from: what the summary or note shows, with speaker names filled in.
     static func editableText(_ r: Recording) -> String {
-        Speakers.apply(r.speakerNames, to: r.summary ?? "")
+        r.displaySummary ?? ""
     }
 
     /// Starts a new typed note and opens it in the editor. It is saved when the editor is.
@@ -376,7 +376,8 @@ final class AppModel: ObservableObject {
         if r.noteKind != nil {
             return SummaryLayout.noteBlocks(s).compactMap { if case .task(_, let t) = $0 { return t } else { return nil } }
         }
-        return SummaryLayout.splitActions(s).actions
+        // With owners shown as the names guessed from the recording, as on screen.
+        return SummaryLayout.splitActions(r.displaySummary ?? s).actions
     }
 
     func sendToReminders(_ indices: [Int], in id: Recording.ID) {
@@ -425,7 +426,7 @@ final class AppModel: ObservableObject {
     func copySummary(_ id: Recording.ID? = nil) {
         guard let r = recordings.first(where: { $0.id == (id ?? selection) }), let s = r.summary else { return }
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(Speakers.apply(r.speakerNames, to: s), forType: .string)
+        NSPasteboard.general.setString(r.displaySummary ?? s, forType: .string)
     }
 
     func exportSelected() {
@@ -799,6 +800,9 @@ final class AppModel: ObservableObject {
                             audioFileName: r.url.lastPathComponent)
         rec.duration = Self.duration(of: r.url)
         let tooShort = (rec.duration ?? 0) < 0.6
+        // The ⌥Space voice shortcut always makes a note, like the iPhone's quick note button;
+        // New Recording decides by what it hears.
+        if recordingFromShortcut { rec.summaryStyle = .note }
         if recordingFromShortcut {
             recordingFromShortcut = false
             ListeningHUD.shared.hide(after: tooShort ? 0 : 1.4)

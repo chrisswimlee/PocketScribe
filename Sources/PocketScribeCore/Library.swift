@@ -84,10 +84,29 @@ public struct LibraryItem: Identifiable, Codable, Equatable, Sendable {
         if let d = duration { out += " · \(formatTimestamp(d))" }
         if let e = engineName { out += " · summarized by \(e)" }
         out += "_\n\n"
-        if let s = summary { out += Speakers.apply(speakerNames, to: s) + "\n\n" }
+        if let s = displaySummary { out += s + "\n\n" }
         if let t = transcript { out += "---\n\n## Transcript\n\n\(t.timestampedText(speakerNames: speakerNames))\n" }
         if let d = document { out += "---\n\n_Notes from \(d.sizeDescription) of \(originalFileName ?? title)._\n" }
         return out
+    }
+
+    /// Names guessed from what people said ("I'm Maria"), remembered per item.
+    public var suggestedSpeakerNames: [Int: String] {
+        guard noteKind == nil, let transcript, !transcript.speakers.isEmpty else { return [:] }
+        return SpeakerSuggestionCache.shared.suggestions(for: id, transcript: transcript)
+    }
+
+    /// Guessed names still waiting for the user to accept (empty once accepted or waved away).
+    public var pendingNameSuggestions: [Int: String] {
+        nameSuggestionsDismissed == true ? [:] : Speakers.pending(suggestedSpeakerNames, names: speakerNames)
+    }
+
+    /// The summary as it should read: the user's speaker names, and for action items owned by a
+    /// speaker the user hasn't named, the name guessed from the recording.
+    public var displaySummary: String? {
+        guard let summary else { return nil }
+        let owners = Speakers.nameOwners(summary, suggestions: suggestedSpeakerNames, names: speakerNames)
+        return Speakers.apply(speakerNames, to: owners)
     }
 
     public static func defaultRecordingTitle(_ date: Date) -> String {
@@ -158,5 +177,92 @@ public enum SummaryLayout {
     public static func seekSeconds(_ url: URL) -> TimeInterval? {
         guard url.scheme == "seek", let host = url.host(), let s = Double(host) else { return nil }
         return s
+    }
+}
+
+// MARK: - What kind of item, and when
+
+extension LibraryItem {
+    /// What an item is, for its icon in the library: one icon per kind.
+    public enum ItemKind: Sendable, Equatable {
+        /// Two or more people (a meeting summary with speakers).
+        case meeting
+        /// One person: a lecture, a long memo, or a recording not summarized yet.
+        case recording
+        /// A short recording turned into a note.
+        case voiceNote
+        /// Typed in the app.
+        case written
+        case document
+
+        public var symbol: String {
+            switch self {
+            case .meeting: return "person.2"
+            case .recording: return "waveform"
+            case .voiceNote: return "mic"
+            case .written: return "square.and.pencil"
+            case .document: return "doc.text"
+            }
+        }
+
+        public var label: String {
+            switch self {
+            case .meeting: return "Meeting"
+            case .recording: return "Recording"
+            case .voiceNote: return "Voice note"
+            case .written: return "Note"
+            case .document: return "Document"
+            }
+        }
+    }
+
+    public var itemKind: ItemKind {
+        if isWritten { return .written }
+        if isDocument { return .document }
+        if noteKind != nil { return .voiceNote }
+        if let t = transcript, t.conversationSpeakerCount >= 2 { return .meeting }
+        return .recording
+    }
+}
+
+/// Today / This week / Earlier groups for the library list, newest first inside each.
+public enum LibrarySections {
+    public static func group(_ items: [LibraryItem], now: Date = Date(), calendar: Calendar = .current)
+        -> [(title: String, items: [LibraryItem])] {
+        let today = calendar.startOfDay(for: now)
+        let weekAgo = calendar.date(byAdding: .day, value: -6, to: today) ?? today
+        var groups: [(title: String, items: [LibraryItem])] = [("Today", []), ("This week", []), ("Earlier", [])]
+        for item in items.sorted(by: { $0.createdAt > $1.createdAt }) {
+            let i = item.createdAt >= today ? 0 : item.createdAt >= weekAgo ? 1 : 2
+            groups[i].items.append(item)
+        }
+        return groups.filter { !$0.items.isEmpty }
+    }
+}
+
+// MARK: - Slide speaker notes
+
+extension DocumentText.Part {
+    /// A slide's own text and its speaker notes, which the reader keeps after a
+    /// "Speaker notes:" line, so the two can be shown in different styles.
+    public var slideTextAndNotes: (text: String, notes: String?) {
+        guard let r = text.range(of: "\n\nSpeaker notes: ") else { return (text, nil) }
+        return (String(text[..<r.lowerBound]), String(text[r.upperBound...]))
+    }
+}
+
+extension SummaryLayout {
+    /// Takes one "## Heading" section out of a summary, e.g. "Notable moments", so it can be
+    /// shown collapsed. Returns the summary without it, and the section's body.
+    public static func extractSection(_ heading: String, from md: String) -> (rest: String, body: String?) {
+        var lines = md.components(separatedBy: "\n")
+        guard let start = lines.firstIndex(where: {
+            $0.trimmingCharacters(in: .whitespaces).lowercased() == "## \(heading.lowercased())"
+        }) else { return (md, nil) }
+        let end = lines[(start + 1)...].firstIndex(where: { $0.hasPrefix("## ") }) ?? lines.endIndex
+        let body = lines[(start + 1)..<end].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        lines.removeSubrange(start..<end)
+        let rest = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        return (rest, body.isEmpty ? nil : body)
     }
 }

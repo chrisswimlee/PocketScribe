@@ -178,9 +178,12 @@ struct SummaryBody: View {
     let recording: Recording
     let summary: String
     let textSize: Double
+    @State private var momentsOpen = false
 
     /// The summary with any renamed speakers ("Speaker 2" → "Maria").
-    private var text: String { Speakers.apply(recording.speakerNames, to: summary) }
+    private var text: String {
+        recording.summary == summary ? (recording.displaySummary ?? summary) : Speakers.apply(recording.speakerNames, to: summary)
+    }
 
     var body: some View {
         if recording.noteKind != nil { noteBody } else { summaryBody }
@@ -291,7 +294,9 @@ struct SummaryBody: View {
     }
 
     private var summaryBody: some View {
-        let parts = Self.split(text)
+        // Notable moments repeats much of Key points, so it starts collapsed at the end.
+        let (main, moments) = SummaryLayout.extractSection("Notable moments", from: text)
+        let parts = Self.split(main)
         return VStack(alignment: .leading, spacing: 14) {
             if !parts.before.isEmpty { md(parts.before) }
             if !parts.actions.isEmpty {
@@ -318,6 +323,13 @@ struct SummaryBody: View {
                 }
             }
             if !parts.after.isEmpty { md(parts.after) }
+            if let moments {
+                DisclosureGroup(isExpanded: $momentsOpen) {
+                    md(moments).padding(.top, 6)
+                } label: {
+                    Text("Notable moments").font(.system(size: textSize * 1.3, weight: .semibold))
+                }
+            }
             sourcesNote
         }
         .textSelection(.enabled)
@@ -433,11 +445,26 @@ struct DocumentTextView: View {
                                 Text(label).font(.system(size: textSize * 0.85, weight: .semibold))
                                     .foregroundStyle(.secondary)
                             }
-                            Text(part.text.isEmpty ? "(No text on this \(document.unitName?.lowercased() ?? "page"))" : part.text)
+                            let split = part.slideTextAndNotes
+                            Text(split.text.isEmpty ? "(No text on this \(document.unitName?.lowercased() ?? "page"))" : split.text)
                                 .font(.system(size: textSize))
-                                .foregroundStyle(part.text.isEmpty ? .secondary : .primary)
+                                .foregroundStyle(split.text.isEmpty ? .secondary : .primary)
                                 .textSelection(.enabled)
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                            if let notes = split.notes {
+                                // Speaker notes: smaller and quieter, so they don't read as slide text.
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Label("Notes", systemImage: "text.bubble")
+                                        .font(.system(size: textSize * 0.8, weight: .semibold)).foregroundStyle(.secondary)
+                                    Text(notes)
+                                        .font(.system(size: textSize * 0.9)).foregroundStyle(.secondary)
+                                        .textSelection(.enabled)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .padding(.leading, 10)
+                                .overlay(alignment: .leading) { Rectangle().fill(.quaternary).frame(width: 2) }
+                                .padding(.top, 4)
+                            }
                         }
                         .padding(highlighted == part.number ? 10 : 0)
                         .background(highlighted == part.number ? Color.accentColor.opacity(0.12) : .clear,
@@ -678,8 +705,7 @@ struct NameSuggestionCard: View {
     let recording: Recording
 
     var body: some View {
-        let names = recording.nameSuggestionsDismissed == true ? [:]
-            : Speakers.pendingSuggestions(in: recording.transcript, names: recording.speakerNames)
+        let names = recording.pendingNameSuggestions
         if !names.isEmpty {
             HStack(spacing: 10) {
                 Image(systemName: "person.crop.circle.badge.questionmark").foregroundStyle(.tint)

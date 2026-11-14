@@ -346,12 +346,9 @@ struct SidebarRow: View {
     @ViewBuilder private var statusIcon: some View {
         switch recording.status {
         case .ready:
-            if let doc = recording.document {
-                Image(systemName: doc.kind.symbol).foregroundStyle(.secondary)
-                    .accessibilityLabel(doc.kind.label)
-            } else if let kind = recording.noteKind {
-                Image(systemName: kind.symbol).foregroundStyle(.secondary).accessibilityLabel(kind.label)
-            }
+            // One icon per kind: meeting, recording, voice note, typed note, document.
+            let kind = recording.itemKind
+            Image(systemName: kind.symbol).foregroundStyle(.secondary).accessibilityLabel(kind.label)
         case .failed:
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 .accessibilityLabel("Failed")
