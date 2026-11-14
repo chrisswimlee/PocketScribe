@@ -10,8 +10,18 @@ final class AppModel: ObservableObject {
     static let shared = AppModel()
 
     @Published var recordings: [Recording] = []
+    /// Items in Recently Deleted, most recently deleted first. Kept for 30 days.
+    @Published var trash: [Recording] = []
+    /// The item whose text is open in the editor.
+    @Published var editingID: Recording.ID?
+    /// Just moved to Recently Deleted: a toast offers Undo for a few seconds.
+    @Published var undoDeleteID: Recording.ID?
+    /// Asks before a new summary replaces text the user edited.
+    @Published var confirmRewrite: Recording.ID?
+    private var pendingRewrite: (() -> Void)?
+    @Published var confirmEmptyTrash = false
     @Published var selection: Recording.ID? {
-        didSet { player.load(selected.flatMap { $0.isDocument ? nil : audioURL(for: $0) }) }
+        didSet { player.load(selected.flatMap { $0.hasAudio ? audioURL(for: $0) : nil }) }
     }
     @Published var errorMessage: String?
     /// A short confirmation shown at the bottom of the detail view, e.g. "Added 3 reminders".
@@ -67,10 +77,11 @@ final class AppModel: ObservableObject {
 
     func audioURL(for r: Recording) -> URL { audioDir.appending(path: r.audioFileName) }
 
-    var selected: Recording? { recordings.first { $0.id == selection } }
+    var selected: Recording? { recordings.first { $0.id == selection } ?? trash.first { $0.id == selection } }
 
     private init() {
         load()
+        recoverInterruptedRecordings()
         GlobalHotKey.shared.onPress = { [weak self] in self?.voiceShortcutPressed() }
         GlobalHotKey.shared.onRelease = { [weak self] in self?.voiceShortcutReleased() }
         DispatchQueue.main.async { self.applyVoiceShortcut() }
@@ -82,14 +93,49 @@ final class AppModel: ObservableObject {
     }
 
     private func load() {
-        let files = (try? FileManager.default.contentsOfDirectory(at: libraryDir, includingPropertiesForKeys: nil)) ?? []
-        recordings = files.filter { $0.pathExtension == "json" }
-            .compactMap { try? JSONDecoder().decode(Recording.self, from: Data(contentsOf: $0)) }
-            .sorted { $0.createdAt > $1.createdAt }
+        let loaded = LibraryFiles.load(Recording.self, from: libraryDir)
+        let all = loaded.items.sorted { $0.createdAt > $1.createdAt }
+        // Recently Deleted keeps items for 30 days.
+        for r in all where LibraryFiles.isExpired(deletedAt: r.deletedAt) { removeFiles(of: r) }
+        recordings = all.filter { $0.deletedAt == nil }
+        trash = all.filter { $0.deletedAt != nil && !LibraryFiles.isExpired(deletedAt: $0.deletedAt) }
+            .sorted { ($0.deletedAt ?? .distantPast) > ($1.deletedAt ?? .distantPast) }
+        errorMessage = LibraryFiles.unreadableMessage(loaded.unreadable, in: libraryDir)
+    }
+
+    /// A recording that was still going when the app quit, crashed or ran out of battery is
+    /// added back to the library and transcribed. Recordings are CAF files, which stay
+    /// playable up to the moment they were cut off.
+    private func recoverInterruptedRecordings() {
+        let known = Set((recordings + trash).map(\.audioFileName))
+        let orphans = LibraryFiles.orphanRecordings(in: audioDir, known: known)
+        guard !orphans.isEmpty else { return }
+        for url in orphans {
+            let started = LibraryFiles.creationDate(of: url)
+            let id = UUID(uuidString: url.deletingPathExtension().lastPathComponent) ?? UUID()
+            var r = Recording(id: id, title: Recording.defaultRecordingTitle(started), createdAt: started,
+                              audioFileName: url.lastPathComponent)
+            r.duration = Self.duration(of: url)
+            save(r)
+            recordings.append(r)
+        }
+        recordings.sort { $0.createdAt > $1.createdAt }
+        let n = orphans.count
+        let message = (n == 1 ? "A recording" : "\(n) recordings")
+            + " stopped when Pocket Scribe quit unexpectedly. Everything up to that moment was saved and is being transcribed now."
+        errorMessage = [errorMessage, message].compactMap { $0 }.joined(separator: "\n\n")
     }
 
     private func save(_ r: Recording) {
-        try? JSONEncoder().encode(r).write(to: libraryDir.appending(path: "\(r.id.uuidString).json"))
+        do {
+            try LibraryFiles.save(r, id: r.id, in: libraryDir)
+        } catch {
+            errorMessage = "Couldn't save “\(r.title)”: \(error.localizedDescription)"
+        }
+    }
+
+    private func isSaved(_ id: Recording.ID) -> Bool {
+        FileManager.default.fileExists(atPath: libraryDir.appending(path: "\(id.uuidString).json").path(percentEncoded: false))
     }
 
     private func update(_ id: Recording.ID, _ change: (inout Recording) -> Void) {
@@ -106,13 +152,162 @@ final class AppModel: ObservableObject {
         update(id) { $0.title = t; $0.titleIsAutomatic = false }
     }
 
+    /// Moves an item to Recently Deleted, where it can be put back for 30 days.
     func delete(_ id: Recording.ID) {
         if workingOn == id { cancelProcessing() }
-        guard let r = recordings.first(where: { $0.id == id }) else { return }
+        guard let i = recordings.firstIndex(where: { $0.id == id }) else { return }
+        var r = recordings[i]
         if selection == id { selection = nil }
-        recordings.removeAll { $0.id == id }
-        try? FileManager.default.removeItem(at: libraryDir.appending(path: "\(id.uuidString).json"))
-        try? FileManager.default.removeItem(at: audioURL(for: r))
+        recordings.remove(at: i)
+        if editingID == id { editingID = nil }
+        // A typed note with nothing in it isn't worth keeping.
+        if r.isWritten, (r.summary ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            removeFiles(of: r)
+            return
+        }
+        r.deletedAt = Date()
+        // Put back mid-processing: it goes back in the queue.
+        if r.status == .processing { r.status = .queued }
+        save(r)
+        trash.insert(r, at: 0)
+        if let undo = NSApp.keyWindow?.undoManager {
+            undo.registerUndo(withTarget: self) { model in MainActor.assumeIsolated { model.restore(id) } }
+            undo.setActionName("Delete")
+        }
+        undoDeleteID = id
+        undoTask?.cancel()
+        undoTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(6))
+            if !Task.isCancelled, self?.undoDeleteID == id { self?.undoDeleteID = nil }
+        }
+    }
+    private var undoTask: Task<Void, Never>?
+
+    /// Puts an item from Recently Deleted back in the library.
+    func restore(_ id: Recording.ID) {
+        guard let i = trash.firstIndex(where: { $0.id == id }) else { return }
+        var r = trash.remove(at: i)
+        r.deletedAt = nil
+        save(r)
+        recordings.append(r)
+        recordings.sort { $0.createdAt > $1.createdAt }
+        if undoDeleteID == id { undoDeleteID = nil }
+        processQueue()
+    }
+
+    /// Removes an item from Recently Deleted for good: its text, summary and file.
+    func deleteForever(_ id: Recording.ID) {
+        guard let i = trash.firstIndex(where: { $0.id == id }) else { return }
+        let r = trash.remove(at: i)
+        if selection == id { selection = nil }
+        removeFiles(of: r)
+    }
+
+    func emptyTrash() {
+        if let s = selection, trash.contains(where: { $0.id == s }) { selection = nil }
+        for r in trash { removeFiles(of: r) }
+        trash.removeAll()
+    }
+
+    private func removeFiles(of r: Recording) {
+        try? FileManager.default.removeItem(at: libraryDir.appending(path: "\(r.id.uuidString).json"))
+        // A typed note has no file of its own: never remove the Audio folder itself.
+        if !r.audioFileName.isEmpty { try? FileManager.default.removeItem(at: audioURL(for: r)) }
+    }
+
+    // MARK: Writing and editing
+
+    /// The text the editor starts from: what the summary or note shows, with speaker names filled in.
+    static func editableText(_ r: Recording) -> String {
+        Speakers.apply(r.speakerNames, to: r.summary ?? "")
+    }
+
+    /// Starts a new typed note and opens it in the editor. It is saved when the editor is.
+    func newNote() {
+        if editingID != nil { cancelEdit() }
+        let r = Recording.writtenNote()
+        recordings.insert(r, at: 0)
+        selection = r.id
+        editingID = r.id
+    }
+
+    /// Saves the editor. The AI's first version is kept so it can be restored.
+    func saveEdit(_ id: Recording.ID, title: String, body: String) {
+        editingID = nil
+        guard let r = recordings.first(where: { $0.id == id }) else { return }
+        let text = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        let newTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if r.isWritten, text.isEmpty, newTitle.isEmpty {
+            // An empty typed note: drop it rather than keep a blank page.
+            recordings.removeAll { $0.id == id }
+            removeFiles(of: r)
+            if selection == id { selection = nil }
+            return
+        }
+        update(id) { r in
+            if text != Self.editableText(r) {
+                if !r.isWritten, r.originalSummary == nil { r.originalSummary = r.summary }
+                r.summary = text
+                r.editedAt = Date()
+                self.dropStaleActionMarks(&r)
+            }
+            if r.isWritten {
+                r.titleIsAutomatic = newTitle.isEmpty
+                r.title = newTitle.isEmpty ? Recording.title(forNote: text, createdAt: r.createdAt) : newTitle
+            } else if !newTitle.isEmpty, newTitle != r.title {
+                r.title = newTitle
+                r.titleIsAutomatic = false
+            }
+        }
+    }
+
+    /// Closes the editor without saving. A new typed note that was never saved goes away.
+    func cancelEdit() {
+        guard let id = editingID else { return }
+        editingID = nil
+        if let r = recordings.first(where: { $0.id == id }), r.isWritten, !isSaved(id) {
+            recordings.removeAll { $0.id == id }
+            if selection == id { selection = nil }
+        }
+    }
+
+    /// Goes back to the version the AI wrote, before the user's edits.
+    func restoreOriginal(_ id: Recording.ID) {
+        update(id) { r in
+            guard let original = r.originalSummary else { return }
+            r.summary = original
+            r.originalSummary = nil
+            r.editedAt = nil
+            self.dropStaleActionMarks(&r)
+        }
+    }
+
+    /// Ticks and sent marks point at action items by position; drop any past the end after an edit.
+    private func dropStaleActionMarks(_ r: inout Recording) {
+        let n = actionItems(of: r).count
+        r.checkedActions = r.checkedActions.filter { $0 < n }
+        r.sentToReminders = r.sentToReminders?.filter { $0 < n }
+        r.sentToCalendar = r.sentToCalendar?.filter { $0 < n }
+    }
+
+    /// True when rewriting would replace the user's own edits, so we ask first.
+    private func asksBeforeRewrite(_ id: Recording.ID, then action: @escaping () -> Void) -> Bool {
+        guard recordings.first(where: { $0.id == id })?.editedAt != nil else { return false }
+        pendingRewrite = action
+        confirmRewrite = id
+        return true
+    }
+
+    func confirmPendingRewrite() {
+        let action = pendingRewrite
+        pendingRewrite = nil
+        confirmRewrite = nil
+        action?()
+    }
+
+    func cancelPendingRewrite() {
+        pendingRewrite = nil
+        confirmRewrite = nil
     }
 
     func toggleAction(_ index: Int, in id: Recording.ID) {
@@ -134,14 +329,16 @@ final class AppModel: ObservableObject {
 
     /// Transcribes again with speaker labels (for recordings made before labels existed),
     /// then writes a new summary that can say who does what.
-    func labelSpeakers(_ id: Recording.ID) {
+    func labelSpeakers(_ id: Recording.ID, replacingEdits: Bool = false) {
+        if !replacingEdits, asksBeforeRewrite(id, then: { [weak self] in self?.labelSpeakers(id, replacingEdits: true) }) { return }
         if !settings.labelSpeakers { settings.labelSpeakers = true }
         update(id) { $0.transcript = nil; $0.speakerNames = nil; $0.status = .queued; $0.errorMessage = nil }
         processQueue()
     }
 
     /// Rewrites a recording as a note or as a meeting summary (keeps the transcript).
-    func setSummaryStyle(_ style: SummaryStyle, for id: Recording.ID) {
+    func setSummaryStyle(_ style: SummaryStyle, for id: Recording.ID, replacingEdits: Bool = false) {
+        if !replacingEdits, asksBeforeRewrite(id, then: { [weak self] in self?.setSummaryStyle(style, for: id, replacingEdits: true) }) { return }
         update(id) { r in
             r.summaryStyle = style
             // Notes made before speakers were labeled on short recordings: label them now,
@@ -302,7 +499,9 @@ final class AppModel: ObservableObject {
     func isWorking(on id: Recording.ID) -> Bool { workingOn == id }
     var queuedCount: Int { recordings.filter { $0.status == .queued }.count }
 
-    func retry(_ id: Recording.ID) {
+    func retry(_ id: Recording.ID, replacingEdits: Bool = false) {
+        guard recordings.first(where: { $0.id == id })?.isWritten == false else { return }
+        if !replacingEdits, asksBeforeRewrite(id, then: { [weak self] in self?.retry(id, replacingEdits: true) }) { return }
         update(id) { $0.status = .queued; $0.errorMessage = nil }
         processQueue()
     }
@@ -396,6 +595,8 @@ final class AppModel: ObservableObject {
                     $0.checkedActions = []
                     $0.sentToReminders = nil
                     $0.sentToCalendar = nil
+                    $0.originalSummary = nil
+                    $0.editedAt = nil
                     if $0.titleIsAutomatic, settings.suggestTitles, !note.title.isEmpty { $0.title = note.title }
                 }
                 return
@@ -411,6 +612,8 @@ final class AppModel: ObservableObject {
                 $0.checkedActions = []
                 $0.sentToReminders = nil
                 $0.sentToCalendar = nil
+                $0.originalSummary = nil
+                $0.editedAt = nil
             }
 
             // 3. Title (best effort)
@@ -467,6 +670,8 @@ final class AppModel: ObservableObject {
                 $0.checkedActions = []
                 $0.sentToReminders = nil
                 $0.sentToCalendar = nil
+                $0.originalSummary = nil
+                $0.editedAt = nil
             }
             if settings.suggestTitles, recordings.first(where: { $0.id == id })?.titleIsAutomatic == true,
                let title = try? await summarizer.suggestTitle(for: summary), !title.isEmpty {
@@ -546,13 +751,9 @@ final class AppModel: ObservableObject {
                     return
                 }
                 let id = UUID()
-                let name = "\(id.uuidString).m4a"
-                let settings: [String: Any] = [
-                    AVFormatIDKey: kAudioFormatMPEG4AAC,
-                    AVSampleRateKey: 16_000,
-                    AVNumberOfChannelsKey: 1,
-                    AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
-                ]
+                // CAF, not .m4a: it stays playable if the app quits mid-recording.
+                let name = "\(id.uuidString).\(LibraryFiles.recordingExtension)"
+                let settings = LibraryFiles.recordingSettings
                 do {
                     let r = try AVAudioRecorder(url: self.audioDir.appending(path: name), settings: settings)
                     r.isMeteringEnabled = true

@@ -32,6 +32,12 @@ struct LibraryView: View {
                                     }
                                 }
                         }
+                        if !model.trash.isEmpty, search.isEmpty {
+                            Button { model.showTrash = true } label: {
+                                Label("Recently Deleted (\(model.trash.count))", systemImage: "trash")
+                                    .font(.subheadline).foregroundStyle(.secondary)
+                            }
+                        }
                     }
                     .listStyle(.plain)
                     .searchable(text: $search, prompt: "Search notes and transcripts")
@@ -49,14 +55,24 @@ struct LibraryView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { model.showImporter = true } label: { Label("Import audio or documents", systemImage: "square.and.arrow.down") }
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { model.composingNote = true } label: { Label("New note", systemImage: "square.and.pencil") }
+                }
             }
-            .safeAreaInset(edge: .bottom) { RecordBar() }
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: 0) {
+                    UndoDeleteToast()
+                    RecordBar()
+                }
+            }
         }
         .fileImporter(isPresented: $model.showImporter, allowedContentTypes: AppModel.importTypes,
                       allowsMultipleSelection: true) { result in
             if case .success(let urls) = result { model.importFiles(urls) }
         }
         .sheet(isPresented: $model.showSettings) { SettingsView() }
+        .sheet(isPresented: $model.composingNote) { NoteEditorSheet(recording: nil) }
+        .sheet(isPresented: $model.showTrash) { TrashView() }
         .fullScreenCover(isPresented: Binding(
             get: { model.isRecording && !model.isQuickNote }, set: { _ in })
         ) { RecordingScreen() }
@@ -75,7 +91,7 @@ private struct EmptyLibrary: View {
         ContentUnavailableView {
             Label("No recordings yet", systemImage: "waveform")
         } description: {
-            Text("Record a meeting or lecture to get a transcript and summary, hold the mic button to talk a quick note, or import a PDF, Word file or slide deck for notes. Everything stays on this iPhone.")
+            Text("Write a note, record a meeting or lecture to get a transcript and summary, hold the mic button to talk a quick note, or import a PDF, Word file or slide deck. Everything stays on this iPhone.")
         }
     }
 }
@@ -266,5 +282,97 @@ struct RecordingScreen: View {
         }
         .frame(maxWidth: .infinity)
         .tint(.red)
+    }
+}
+
+// MARK: - Recently Deleted
+
+/// "Moved to Recently Deleted" with Undo, for a few seconds after a delete.
+struct UndoDeleteToast: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        Group {
+            if let id = model.undoDeleteID, let r = model.trash.first(where: { $0.id == id }) {
+                HStack(spacing: 12) {
+                    Label("Deleted “\(r.title)”", systemImage: "trash").lineLimit(1)
+                    Button("Undo") { model.restore(id) }.fontWeight(.semibold)
+                }
+                .font(.subheadline)
+                .padding(.horizontal, 16).padding(.vertical, 10)
+                .background(.regularMaterial, in: Capsule())
+                .shadow(radius: 4, y: 2)
+                .padding(.bottom, 8)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.default, value: model.undoDeleteID)
+    }
+}
+
+/// Items deleted in the last 30 days. Swipe to put back or delete now.
+struct TrashView: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var confirmDelete: Recording.ID?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(model.trash) { r in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(r.title).font(.headline).lineLimit(1)
+                            Text(daysLeft(r)).font(.caption).foregroundStyle(.secondary)
+                        }
+                        .swipeActions(edge: .leading) {
+                            Button { model.restore(r.id) } label: { Label("Put Back", systemImage: "arrow.uturn.backward") }
+                                .tint(.blue)
+                        }
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) { confirmDelete = r.id } label: { Label("Delete Now", systemImage: "trash") }
+                        }
+                        .contextMenu {
+                            Button { model.restore(r.id) } label: { Label("Put Back", systemImage: "arrow.uturn.backward") }
+                            Button(role: .destructive) { confirmDelete = r.id } label: { Label("Delete Now", systemImage: "trash") }
+                        }
+                    }
+                } footer: {
+                    Text("Items are removed for good \(LibraryFiles.trashDays) days after you delete them. Swipe right to put one back.")
+                }
+            }
+            .overlay {
+                if model.trash.isEmpty {
+                    ContentUnavailableView("Nothing in Recently Deleted", systemImage: "trash")
+                }
+            }
+            .navigationTitle("Recently Deleted")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Empty", role: .destructive) { model.confirmEmptyTrash = true }
+                        .disabled(model.trash.isEmpty)
+                }
+            }
+            .confirmationDialog("Delete this now?", isPresented: Binding(
+                get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } }), titleVisibility: .visible
+            ) {
+                Button("Delete Now", role: .destructive) { if let id = confirmDelete { model.deleteForever(id) } }
+            } message: {
+                Text("It is removed from this iPhone right away. This can't be undone.")
+            }
+            .confirmationDialog("Empty Recently Deleted?", isPresented: $model.confirmEmptyTrash, titleVisibility: .visible) {
+                Button("Delete \(model.trash.count == 1 ? "1 item" : "\(model.trash.count) items")", role: .destructive) { model.emptyTrash() }
+            } message: {
+                Text("Everything here is removed from this iPhone right away. This can't be undone.")
+            }
+        }
+    }
+
+    private func daysLeft(_ r: Recording) -> String {
+        guard let d = r.deletedAt else { return "" }
+        let left = max(0, LibraryFiles.trashDays - (Calendar.current.dateComponents([.day], from: d, to: Date()).day ?? 0))
+        return "\(left) day\(left == 1 ? "" : "s") left"
     }
 }
