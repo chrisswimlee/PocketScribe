@@ -21,7 +21,6 @@ struct DetailView: View {
     }
     @State private var renaming = false
     @State private var newTitle = ""
-    @State private var confirmDelete = false
     /// A page or slide tapped in the notes ("p. 3"), shown and highlighted in the Text tab.
     @State private var pageTarget: Int?
     /// False once the full player has scrolled off screen; a compact bar then stays at the bottom.
@@ -30,11 +29,11 @@ struct DetailView: View {
     var body: some View {
         if let r = model.recording(id) {
             content(r)
-                .onAppear { player.load(r.isDocument ? nil : model.audioURL(for: r)) }
-                .onChange(of: r.audioFileName) { player.load(r.isDocument ? nil : model.audioURL(for: r)) }
+                .onAppear { player.load(r.hasAudio ? model.audioURL(for: r) : nil) }
+                .onChange(of: r.audioFileName) { player.load(r.hasAudio ? model.audioURL(for: r) : nil) }
                 .onDisappear { player.pause() }
         } else {
-            ContentUnavailableView("Recording deleted", systemImage: "trash")
+            ContentUnavailableView("Moved to Recently Deleted", systemImage: "trash")
         }
     }
 
@@ -47,12 +46,14 @@ struct DetailView: View {
                     PlayerControls().padding(.vertical, 4)
                         .onScrollVisibilityChange(threshold: 0.2) { playerOnScreen = $0 }
                 }
-                Picker("View", selection: $tab) {
-                    ForEach(Tab.allCases, id: \.self) {
-                        Text($0 == .transcript && r.isDocument ? "Text" : $0.rawValue)
+                if !r.isWritten {
+                    Picker("View", selection: $tab) {
+                        ForEach(Tab.allCases, id: \.self) {
+                            Text($0 == .transcript && r.isDocument ? "Text" : $0.rawValue)
+                        }
                     }
+                    .pickerStyle(.segmented)
                 }
-                .pickerStyle(.segmented)
                 switch tab {
                 case .summary: summarySection(r)
                 case .transcript:
@@ -114,18 +115,30 @@ struct DetailView: View {
                 }
                 .disabled(r.summary == nil && r.transcript == nil && r.document == nil)
             }
+            if r.summary != nil, r.status == .ready {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { model.editingID = r.id } label: { Label("Edit", systemImage: "pencil") }
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) { menu(r) }
+        }
+        .sheet(isPresented: Binding(get: { model.editingID == r.id }, set: { if !$0 { model.cancelEdit() } })) {
+            NoteEditorSheet(recording: r)
+        }
+        .confirmationDialog(
+            "Replace your edits?",
+            isPresented: Binding(get: { model.confirmRewrite == r.id }, set: { if !$0 { model.cancelPendingRewrite() } }),
+            titleVisibility: .visible
+        ) {
+            Button("Write a new version", role: .destructive) { model.confirmPendingRewrite() }
+            Button("Cancel", role: .cancel) { model.cancelPendingRewrite() }
+        } message: {
+            Text("You edited this text. A new version from the AI replaces your changes.")
         }
         .alert("Rename", isPresented: $renaming) {
             TextField("Title", text: $newTitle)
             Button("Save") { model.rename(r.id, to: newTitle) }
             Button("Cancel", role: .cancel) {}
-        }
-        .confirmationDialog("Delete “\(r.title)”?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("Delete", role: .destructive) { model.delete(r.id) }
-        } message: {
-            Text(r.isDocument ? "The file, its text and summary are removed from this iPhone."
-                 : "The audio, transcript and summary are removed from this iPhone.")
         }
     }
 
@@ -151,13 +164,19 @@ struct DetailView: View {
                     }
                 }
             }
-            if r.status == .ready || r.status == .failed {
+            if let s = r.summary, r.status == .ready {
+                Button { model.editingID = r.id } label: { Label(s.isEmpty ? "Write" : "Edit text", systemImage: "pencil") }
+            }
+            if r.originalSummary != nil {
+                Button { model.restoreOriginal(r.id) } label: { Label("Restore the AI's version", systemImage: "arrow.uturn.backward") }
+            }
+            if !r.isWritten, r.status == .ready || r.status == .failed {
                 Button { model.retry(r.id) } label: {
                     Label(r.transcript == nil && !r.isDocument ? "Transcribe again" : "Summarize again", systemImage: "arrow.clockwise")
                 }
             }
             Divider()
-            Button(role: .destructive) { confirmDelete = true } label: { Label("Delete", systemImage: "trash") }
+            Button(role: .destructive) { model.delete(r.id) } label: { Label("Delete", systemImage: "trash") }
         } label: {
             Label("More", systemImage: "ellipsis.circle")
         }
@@ -194,7 +213,21 @@ struct DetailView: View {
         switch r.status {
         case .ready:
             if r.noteKind == nil { NameSuggestionCard(recording: r) }
-            if let s = r.summary { SummaryBody(recording: r, summary: s) }
+            if let s = r.summary {
+                if s.isEmpty, r.isWritten {
+                    Button("Start writing…") { model.editingID = r.id }
+                } else {
+                    SummaryBody(recording: r, summary: s)
+                }
+            }
+            if r.editedAt != nil, r.originalSummary != nil {
+                HStack(spacing: 8) {
+                    Label("You edited this", systemImage: "pencil").foregroundStyle(.secondary)
+                    Button("Restore the AI's version") { model.restoreOriginal(r.id) }
+                }
+                .font(.caption)
+                .padding(.top, 4)
+            }
             if let e = r.engineName {
                 Text("Written on this device by \(e)").font(.caption).foregroundStyle(.tertiary).padding(.top, 8)
             }
@@ -727,5 +760,78 @@ enum SourceLinkStyle {
             out[run.range].foregroundColor = .accentColor
         }
         return out
+    }
+}
+
+// MARK: - Writing and editing
+
+/// Writes a new note, or edits a summary or note as Markdown.
+struct NoteEditorSheet: View {
+    @EnvironmentObject var model: AppModel
+    /// nil for a new note.
+    var recording: Recording?
+    @State private var title = ""
+    @State private var text = ""
+    @FocusState private var focus: Field?
+    enum Field { case title, body }
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 8) {
+                TextField(isWritten ? "Title (optional)" : "Title", text: $title)
+                    .font(.title3.weight(.semibold))
+                    .focused($focus, equals: .title)
+                    .submitLabel(.next)
+                    .onSubmit { focus = .body }
+                Divider()
+                TextEditor(text: $text)
+                    .scrollContentBackground(.hidden)
+                    .focused($focus, equals: .body)
+                    .accessibilityLabel("Note text")
+                Text("Markdown works: # heading, - list, - [ ] task.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            .padding()
+            .navigationTitle(recording == nil ? "New Note" : "Edit")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { cancel() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }
+                        .disabled(recording == nil && title.trimmingCharacters(in: .whitespaces).isEmpty
+                                  && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+        .interactiveDismissDisabled(hasChanges)
+        .onAppear {
+            if let r = recording {
+                title = r.isWritten && r.titleIsAutomatic ? "" : r.title
+                text = AppModel.editableText(r)
+            }
+            focus = .body
+        }
+    }
+
+    private var isWritten: Bool { recording?.isWritten ?? true }
+
+    private var hasChanges: Bool {
+        guard let r = recording else { return !title.isEmpty || !text.isEmpty }
+        return text != AppModel.editableText(r) || (!title.isEmpty && title != r.title)
+    }
+
+    private func save() {
+        if let r = recording {
+            model.saveEdit(r.id, title: title, body: text)
+        } else {
+            model.addWrittenNote(title: title, body: text)
+            model.composingNote = false
+        }
+    }
+
+    private func cancel() {
+        if recording != nil { model.cancelEdit() } else { model.composingNote = false }
     }
 }

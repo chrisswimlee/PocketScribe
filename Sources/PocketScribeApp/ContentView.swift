@@ -29,6 +29,7 @@ struct ContentView: View {
                     EmptyDetail()
                 }
             }
+            .overlay(alignment: .bottom) { UndoDeleteToast() }
         }
         .toolbar { toolbar }
         .fileImporter(isPresented: $model.showImporter, allowedContentTypes: AppModel.importTypes,
@@ -53,14 +54,28 @@ struct ContentView: View {
             get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })
         ) { Button("OK") {} } message: { Text(model.errorMessage ?? "") }
         .confirmationDialog(
-            "Delete “\(model.recordings.first { $0.id == model.pendingDelete }?.title ?? "")”?",
+            "Delete “\(model.trash.first { $0.id == model.pendingDelete }?.title ?? "")” now?",
             isPresented: Binding(get: { model.pendingDelete != nil }, set: { if !$0 { model.pendingDelete = nil } })
         ) {
-            Button("Delete", role: .destructive) {
-                if let id = model.pendingDelete { model.delete(id) }
+            Button("Delete Now", role: .destructive) {
+                if let id = model.pendingDelete { model.deleteForever(id) }
             }
         } message: {
-            Text("The file, its text and summary will be removed from this Mac. This can't be undone.")
+            Text("Its file, text and summary are removed from this Mac right away. This can't be undone.")
+        }
+        .confirmationDialog("Empty Recently Deleted?", isPresented: $model.confirmEmptyTrash) {
+            Button("Delete \(model.trash.count == 1 ? "1 Item" : "\(model.trash.count) Items")", role: .destructive) { model.emptyTrash() }
+        } message: {
+            Text("Everything in Recently Deleted is removed from this Mac right away. This can't be undone.")
+        }
+        .confirmationDialog(
+            "Replace your edits?",
+            isPresented: Binding(get: { model.confirmRewrite != nil }, set: { if !$0 { model.cancelPendingRewrite() } })
+        ) {
+            Button("Write a New Version", role: .destructive) { model.confirmPendingRewrite() }
+            Button("Cancel", role: .cancel) { model.cancelPendingRewrite() }
+        } message: {
+            Text("You edited this text. A new version from the AI replaces your changes.")
         }
         .alert("Rename Recording", isPresented: Binding(
             get: { model.pendingRename != nil }, set: { if !$0 { model.pendingRename = nil } })
@@ -93,6 +108,17 @@ struct ContentView: View {
                 }
                 .help("Share the summary and transcript")
             }
+            if let r = model.selected, r.summary != nil, r.deletedAt == nil, r.status == .ready,
+               model.editingID != r.id {
+                Button { tab = .summary; model.editingID = r.id } label: {
+                    Label("Edit", systemImage: "pencil")
+                }
+                .help("Edit the text (⌘E)")
+            }
+            Button { model.newNote() } label: {
+                Label("New Note", systemImage: "square.and.pencil")
+            }
+            .help("Write a new note (⌘N)")
             Button { model.showImporter = true } label: {
                 Label("Add Files", systemImage: "plus")
             }
@@ -163,12 +189,13 @@ struct EmptyDetail: View {
 
     var body: some View {
         ContentUnavailableView {
-            Label(model.recordings.isEmpty ? "Record, or drop in audio and documents" : "Nothing selected",
+            Label(model.recordings.isEmpty ? "Write, record, or drop in audio and documents" : "Nothing selected",
                   systemImage: "waveform.badge.mic")
         } description: {
-            Text("Press \(GlobalHotKey.displayString) anywhere to dictate a note, record a meeting here, or drop in a PDF, Word file or slide deck for notes. Everything runs on this Mac.")
+            Text("Write a note, press \(GlobalHotKey.displayString) anywhere to dictate one, record a meeting here, or drop in a PDF, Word file or slide deck for notes. Everything runs on this Mac.")
         } actions: {
             HStack {
+                Button("New Note") { model.newNote() }.controlSize(.large)
                 Button("Add Files…") { model.showImporter = true }.controlSize(.large)
                 RecordButton(prominent: true)
             }
@@ -181,6 +208,7 @@ struct EmptyDetail: View {
 struct Sidebar: View {
     @EnvironmentObject var model: AppModel
     let search: String
+    @State private var showTrash = false
 
     private var filtered: [Recording] {
         let q = search.trimmingCharacters(in: .whitespaces)
@@ -221,20 +249,52 @@ struct Sidebar: View {
                             .contextMenu {
                                 Button("Rename…") { model.pendingRename = r.id }
                                 if r.summary != nil { Button("Copy Summary") { model.copySummary(r.id) } }
-                                if r.status == .ready || r.status == .failed {
+                                if r.summary != nil, r.status == .ready {
+                                    Button("Edit") { model.selection = r.id; model.editingID = r.id }
+                                }
+                                if !r.isWritten, r.status == .ready || r.status == .failed {
                                     Button(r.isDocument ? "Summarize Again" : r.transcript == nil ? "Transcribe Again" : "Summarize Again") { model.retry(r.id) }
                                 }
-                                Button(r.isDocument ? "Show File in Finder" : "Show Audio in Finder") {
-                                    NSWorkspace.shared.activateFileViewerSelecting([model.audioURL(for: r)])
+                                if !r.isWritten {
+                                    Button(r.isDocument ? "Show File in Finder" : "Show Audio in Finder") {
+                                        NSWorkspace.shared.activateFileViewerSelecting([model.audioURL(for: r)])
+                                    }
                                 }
                                 Divider()
-                                Button("Delete…", role: .destructive) { model.pendingDelete = r.id }
+                                Button("Move to Recently Deleted", role: .destructive) { model.delete(r.id) }
                             }
                     }
                 }
             }
+            if !model.trash.isEmpty {
+                Section(isExpanded: $showTrash) {
+                    ForEach(model.trash) { r in
+                        SidebarRow(recording: r)
+                            .opacity(0.6)
+                            .tag(r.id)
+                            .contextMenu {
+                                Button("Put Back") { model.restore(r.id); model.selection = r.id }
+                                Divider()
+                                Button("Delete Now…", role: .destructive) { model.pendingDelete = r.id }
+                            }
+                    }
+                } header: {
+                    HStack {
+                        Text("Recently Deleted")
+                        Spacer()
+                        if showTrash {
+                            Button("Empty") { model.confirmEmptyTrash = true }
+                                .buttonStyle(.borderless).font(.caption)
+                                .help("Delete everything in Recently Deleted now")
+                        }
+                    }
+                }
+            }
         }
-        .onDeleteCommand { model.pendingDelete = model.selection }
+        .onDeleteCommand {
+            guard let id = model.selection else { return }
+            if model.trash.contains(where: { $0.id == id }) { model.pendingDelete = id } else { model.delete(id) }
+        }
         .overlay {
             if model.recordings.isEmpty {
                 ContentUnavailableView("No recordings yet", systemImage: "tray",
@@ -299,5 +359,28 @@ struct SidebarRow: View {
             Image(systemName: "clock").foregroundStyle(.secondary).accessibilityLabel("Waiting")
         default: EmptyView()
         }
+    }
+}
+
+/// "Moved to Recently Deleted" with an Undo button, for a few seconds after a delete.
+struct UndoDeleteToast: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        Group {
+            if let id = model.undoDeleteID, let r = model.trash.first(where: { $0.id == id }) {
+                HStack(spacing: 12) {
+                    Label("Moved “\(r.title)” to Recently Deleted", systemImage: "trash")
+                        .lineLimit(1)
+                    Button("Undo") { model.restore(id); model.selection = id }
+                }
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(.regularMaterial, in: Capsule())
+                .shadow(radius: 4, y: 2)
+                .padding(.bottom, 16)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.default, value: model.undoDeleteID)
     }
 }

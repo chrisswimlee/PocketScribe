@@ -57,7 +57,11 @@ struct DetailView: View {
     }
 
     @ViewBuilder private var content: some View {
-        if model.isWorking(on: recording.id) || recording.status == .queued {
+        if recording.deletedAt != nil { DeletedBanner(recording: recording) }
+        if model.editingID == recording.id {
+            NoteEditor(recording: recording, textSize: textSize)
+                .id(recording.id)
+        } else if model.isWorking(on: recording.id) || recording.status == .queued {
             ProcessingView(recording: recording)
         } else if recording.status == .failed && recording.transcript == nil && recording.document == nil {
             FailedView(recording: recording)
@@ -69,7 +73,20 @@ struct DetailView: View {
                         if recording.status == .failed { FailedBanner(recording: recording) }
                         if recording.noteKind == nil { NameSuggestionCard(recording: recording) }
                         if let summary = recording.summary {
-                            SummaryBody(recording: recording, summary: summary, textSize: textSize)
+                            if summary.isEmpty, recording.isWritten {
+                                Button("Start writing…") { model.editingID = recording.id }
+                                    .buttonStyle(.link)
+                            } else {
+                                SummaryBody(recording: recording, summary: summary, textSize: textSize)
+                            }
+                        }
+                        if recording.editedAt != nil, recording.originalSummary != nil {
+                            HStack(spacing: 8) {
+                                Label("You edited this", systemImage: "pencil").foregroundStyle(.secondary)
+                                Button("Restore the AI's Version") { model.restoreOriginal(recording.id) }
+                                    .buttonStyle(.link)
+                            }
+                            .font(.caption)
                         }
                     }
                     .frame(maxWidth: 760, alignment: .leading)
@@ -692,5 +709,78 @@ enum SourceLinkStyle {
             out[run.range].foregroundColor = .accentColor
         }
         return out
+    }
+}
+
+// MARK: - Writing and editing
+
+/// Edits a summary or note as Markdown, or writes a new note.
+struct NoteEditor: View {
+    @EnvironmentObject var model: AppModel
+    let recording: Recording
+    let textSize: Double
+    @State private var title = ""
+    @State private var text = ""
+    @FocusState private var focus: Field?
+    enum Field { case title, body }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TextField(recording.isWritten ? "Title (or leave empty to use the first line)" : "Title", text: $title)
+                .textFieldStyle(.plain)
+                .font(.system(size: textSize + 8, weight: .semibold))
+                .focused($focus, equals: .title)
+                .onSubmit { focus = .body }
+            Divider()
+            TextEditor(text: $text)
+                .font(.system(size: textSize))
+                .scrollContentBackground(.hidden)
+                .focused($focus, equals: .body)
+                .accessibilityLabel("Note text")
+            Divider()
+            HStack(spacing: 10) {
+                Text("Markdown works: # heading, - list, - [ ] task. Times like [01:23] stay linked to the audio.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("Cancel", role: .cancel) { model.cancelEdit() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Save") { model.saveEdit(recording.id, title: title, body: text) }
+                    .keyboardShortcut("s")
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .frame(maxWidth: 760)
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            title = recording.isWritten && recording.titleIsAutomatic ? "" : recording.title
+            text = AppModel.editableText(recording)
+            focus = recording.isWritten && text.isEmpty && title.isEmpty ? .title : .body
+        }
+    }
+}
+
+/// Shown on an item in Recently Deleted.
+struct DeletedBanner: View {
+    @EnvironmentObject var model: AppModel
+    let recording: Recording
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "trash").foregroundStyle(.secondary)
+            Text(daysLeft).font(.callout)
+            Spacer()
+            Button("Put Back") { model.restore(recording.id) }
+            Button("Delete Now…", role: .destructive) { model.pendingDelete = recording.id }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .background(.quaternary.opacity(0.5))
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    private var daysLeft: String {
+        guard let d = recording.deletedAt else { return "" }
+        let left = max(0, LibraryFiles.trashDays - (Calendar.current.dateComponents([.day], from: d, to: Date()).day ?? 0))
+        return "In Recently Deleted. Removed for good in \(left) day\(left == 1 ? "" : "s")."
     }
 }

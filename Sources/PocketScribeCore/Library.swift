@@ -38,9 +38,19 @@ public struct LibraryItem: Identifiable, Codable, Equatable, Sendable {
     public var summaryStyle: SummaryStyle?
     /// The user waved away the suggested speaker names.
     public var nameSuggestionsDismissed: Bool?
+    /// When it was moved to Recently Deleted (nil = in the library).
+    public var deletedAt: Date?
+    /// The AI's version of the summary or note, kept the first time the user edits it so it can be restored.
+    public var originalSummary: String?
+    /// When the user last edited the summary or note.
+    public var editedAt: Date?
 
     /// PDFs, Word files, slide decks and text files are read, not transcribed.
     public var isDocument: Bool { DocumentReader.canRead(fileName: audioFileName) }
+    /// A note typed in the app, with no audio or file behind it.
+    public var isWritten: Bool { audioFileName.isEmpty }
+    /// Has audio that can be played (not a document or a typed note).
+    public var hasAudio: Bool { !isWritten && !isDocument }
 
     public init(
         id: UUID = UUID(), title: String, titleIsAutomatic: Bool = true, createdAt: Date = Date(),
@@ -58,8 +68,13 @@ public struct LibraryItem: Identifiable, Codable, Equatable, Sendable {
 
     public var tldr: String? {
         if noteKind != nil {
-            return summary?.split(separator: "\n").first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-                .map { String($0).replacingOccurrences(of: "- [ ] ", with: "") }
+            // The first line that says something: not empty, and not a heading that repeats the title.
+            let lines = (summary ?? "").split(separator: "\n").map {
+                String($0).trimmingCharacters(in: .whitespaces)
+                    .replacingOccurrences(of: "- [ ] ", with: "")
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "# "))
+            }
+            return lines.first { !$0.isEmpty && $0.caseInsensitiveCompare(title) != .orderedSame }
         }
         return summary.flatMap { Summarizer.section("TL;DR", in: $0) }
     }

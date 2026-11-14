@@ -86,6 +86,8 @@ struct AppCommands: Commands {
         CommandGroup(replacing: .newItem) {
             Button(model.isRecording ? "Stop Recording" : "New Recording") { model.toggleRecording() }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
+            Button("New Note") { model.newNote() }
+                .keyboardShortcut("n")
             Button("Add Files…") { model.showImporter = true }
                 .keyboardShortcut("o")
         }
@@ -95,6 +97,9 @@ struct AppCommands: Commands {
                 .disabled(model.selected?.summary == nil)
             Button("Rename…") { model.pendingRename = model.selection }
                 .disabled(model.selection == nil)
+            Button("Edit Text") { if let id = model.selection { model.editingID = id } }
+                .keyboardShortcut("e")
+                .disabled(model.selected.map { $0.summary == nil || $0.deletedAt != nil || $0.status != .ready } ?? true)
         }
         CommandGroup(after: .pasteboard) {
             Divider()
@@ -106,8 +111,8 @@ struct AppCommands: Commands {
             }
             .disabled(model.selected.map { $0.isDocument || $0.transcript?.text.isEmpty != false
                 || !($0.status == .ready || $0.status == .failed) } ?? true)
-            Button("Delete Recording…") { model.pendingDelete = model.selection }
-                .disabled(model.selection == nil)
+            Button("Move to Recently Deleted") { if let id = model.selection { model.delete(id) } }
+                .disabled(model.selected.map { $0.deletedAt != nil } ?? true)
         }
         CommandMenu("Playback") {
             Button(player.isPlaying ? "Pause" : "Play") { player.toggle() }
