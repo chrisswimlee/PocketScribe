@@ -61,19 +61,15 @@ struct TodosView: View {
                 .foregroundStyle(t.done ? .secondary : .primary)
             Spacer(minLength: 8)
             if let due = t.due {
-                Label(due.formatted(t.dueHasTime ? .dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute()
-                                    : .dateTime.weekday(.abbreviated).month(.abbreviated).day()),
-                      systemImage: "calendar")
+                Text("Due " + due.formatted(t.dueHasTime ? .dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute()
+                                            : .dateTime.weekday(.abbreviated).month(.abbreviated).day()))
                     .font(.caption)
                     .foregroundStyle(!t.done && due < Calendar.current.startOfDay(for: Date()) ? Color.red : Color.secondary)
             }
-            if let s = t.seconds {
-                Button(formatTimestamp(s)) { model.selection = t.itemID }
-                    .buttonStyle(.link).font(.caption.monospacedDigit())
-                    .help("Open the note this came from")
-            }
         }
         .padding(.vertical, 2)
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) { model.selection = t.itemID }
         .contextMenu {
             Button("Open Note") { model.selection = t.itemID }
             Button("Add to Reminders") { model.sendToReminders([t.index], in: t.itemID) }

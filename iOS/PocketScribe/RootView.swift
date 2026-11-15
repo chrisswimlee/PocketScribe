@@ -11,7 +11,6 @@ struct RootView: View {
         TabView(selection: $model.tab) {
             Tab("Notes", systemImage: "note.text", value: AppTab.notes) { LibraryView() }
             Tab("To-dos", systemImage: "checklist", value: AppTab.todos) { TodosView() }
-                .badge(LibraryTasks.openCount(in: model.recordings))
             Tab(value: AppTab.search, role: .search) { SearchTab() }
         }
         .fileImporter(isPresented: $model.showImporter, allowedContentTypes: AppModel.importTypes,
@@ -200,6 +199,7 @@ struct TodosView: View {
                     }
                 }
             }
+            .contentMargins(.bottom, 88, for: .scrollContent)
             .navigationTitle("To-dos")
             .navigationDestination(for: Recording.ID.self) { id in DetailView(id: id) }
             .toolbar {
@@ -230,19 +230,11 @@ struct TodosView: View {
                 Text(t.title)
                     .strikethrough(t.done)
                     .foregroundStyle(t.done ? .secondary : .primary)
-                if t.due != nil || t.seconds != nil {
-                    HStack(spacing: 8) {
-                        if let due = t.due {
-                            Label(due.formatted(t.dueHasTime ? .dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute()
-                                                : .dateTime.weekday(.abbreviated).month(.abbreviated).day()),
-                                  systemImage: "calendar")
-                                .foregroundStyle(!t.done && due < Calendar.current.startOfDay(for: Date()) ? Color.red : Color.secondary)
-                        }
-                        if let s = t.seconds {
-                            Text(formatTimestamp(s)).monospacedDigit().foregroundStyle(.tint)
-                        }
-                    }
-                    .font(.caption)
+                if let due = t.due {
+                    Text("Due " + due.formatted(t.dueHasTime ? .dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute()
+                                                : .dateTime.weekday(.abbreviated).month(.abbreviated).day()))
+                        .font(.caption)
+                        .foregroundStyle(!t.done && due < Calendar.current.startOfDay(for: Date()) ? Color.red : Color.secondary)
                 }
             }
             Spacer(minLength: 0)
@@ -290,9 +282,14 @@ struct SearchTab: View {
                             NavigationLink(value: r.id) { RecordingRow(recording: r) }
                         }
                     }
-                } else {
-                    ForEach(results) { r in
-                        NavigationLink(value: r.id) { RecordingRow(recording: r) }
+                } else if !results.isEmpty {
+                    Section {
+                        ForEach(results) { r in
+                            NavigationLink(value: r.id) { RecordingRow(recording: r) }
+                        }
+                    } header: {
+                        Text("\(results.count) \(results.count == 1 ? "note mentions" : "notes mention") “\(query)”")
+                            .textCase(nil)
                     }
                 }
             }

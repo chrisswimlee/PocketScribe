@@ -33,6 +33,8 @@ struct LibraryView: View {
                         }
                     }
                     .listStyle(.plain)
+                    // Room for the + button under the last row.
+                    .contentMargins(.bottom, 88, for: .scrollContent)
                 }
             }
             .navigationTitle("Notes")

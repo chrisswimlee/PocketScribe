@@ -81,7 +81,9 @@ public enum LibraryTasks {
 extension LibraryTask {
     init(item: LibraryItem, index: Int, line: String, done: Bool, now: Date) {
         let parsed = ActionItem(line, speakerNames: item.speakerNames, now: now)
-        self.init(itemID: item.id, index: index, title: parsed.title, due: parsed.due, dueHasTime: parsed.dueHasTime,
+        // "Speaker 3: send the build" says nothing about who; show just the task.
+        let title = parsed.title.replacingOccurrences(of: #"^Speaker \d+:\s*"#, with: "", options: .regularExpression)
+        self.init(itemID: item.id, index: index, title: title.isEmpty ? parsed.title : title, due: parsed.due, dueHasTime: parsed.dueHasTime,
                   seconds: LibraryTasks.firstTimestamp(in: line), done: done)
     }
 }
@@ -123,9 +125,9 @@ public enum Connections {
             && other.summary?.isEmpty == false {
             let people = Self.people(of: other).filter { myPeople.contains($0.lowercased()) }
             let tags = (other.tags ?? []).filter { myTags.contains($0.lowercased()) }
-            let theirWords = Set(KeywordCache.shared.keywords(for: other))
+            let theirWords = Set(KeywordCache.shared.keywords(for: other).map(\.key))
             let lowerPeople = Set(people.map { $0.lowercased() })
-            let words = myWords.filter { theirWords.contains($0) && !lowerPeople.contains($0) }
+            let words = myWords.filter { theirWords.contains($0.key) && !lowerPeople.contains($0.key) }.map(\.shown)
             let score = 3 * people.count + 3 * tags.count + words.count
             guard score >= 3 else { continue }
             var reasons: [String] = []
@@ -168,16 +170,24 @@ public enum Connections {
         "takeaway", "takeaways", "tl;dr", "conversation", "sync", "session", "voice",
     ]
 
-    /// The most-used nouns of a note's title and summary (not its transcript), as lowercase
-    /// dictionary forms: "prices" and "price" both count as "price".
+    /// The most-used nouns of a note's title and summary (not its transcript), as written
+    /// ("pricing"). Words are matched by dictionary form, so "prices" and "price" count together.
     static func keywords(in text: String, limit: Int = 15) -> [String] {
+        keywordPairs(in: text, limit: limit).map(\.shown)
+    }
+
+    /// Each key word's dictionary form (for matching) and its most common spelling in the text (for showing).
+    static func keywordPairs(in text: String, limit: Int = 15) -> [(key: String, shown: String)] {
         var t = text.replacingOccurrences(of: #"\]\([^)]*\)"#, with: "]", options: .regularExpression)
         t = t.replacingOccurrences(of: #"\[[^\]]*\d:\d\d[^\]]*\]"#, with: " ", options: .regularExpression)
         var counts: [String: Int] = [:]
-        func add(_ word: String) {
-            let k = word.lowercased()
-            guard k.count >= 4, k.allSatisfy(\.isLetter), !stopwords.contains(k) else { return }
+        var spellings: [String: [String: Int]] = [:]
+        func add(_ root: String, _ word: String) {
+            let k = root.lowercased(), w = word.lowercased()
+            guard w.count >= 4, k.count >= 3, w.allSatisfy(\.isLetter), !stopwords.contains(k), !stopwords.contains(w)
+            else { return }
             counts[k, default: 0] += 1
+            spellings[k, default: [:]][w, default: 0] += 1
         }
         #if canImport(NaturalLanguage)
         let tagger = NLTagger(tagSchemes: [.lexicalClass, .lemma])
@@ -185,14 +195,21 @@ public enum Connections {
         tagger.enumerateTags(in: t.startIndex..<t.endIndex, unit: .word, scheme: .lexicalClass,
                              options: [.omitPunctuation, .omitWhitespace, .omitOther]) { tag, r in
             guard tag == .noun else { return true }
+            let word = String(t[r])
             let lemma = tagger.tag(at: r.lowerBound, unit: .word, scheme: .lemma).0?.rawValue
-            add(lemma.flatMap { $0.isEmpty ? nil : $0 } ?? String(t[r]))
+            add(lemma.flatMap { $0.isEmpty ? nil : $0 } ?? word, word)
             return true
         }
         #else
-        for w in t.split(whereSeparator: { !$0.isLetter }) where w.count >= 5 { add(String(w)) }
+        for w in t.split(whereSeparator: { !$0.isLetter }) where w.count >= 5 { add(String(w), String(w)) }
         #endif
-        return counts.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }.prefix(limit).map(\.key)
+        return counts.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
+            .prefix(limit)
+            .map { entry -> (key: String, shown: String) in
+                let k = entry.key
+                let shown = spellings[k]?.max { $0.value != $1.value ? $0.value < $1.value : $0.key > $1.key }?.key ?? k
+                return (key: k, shown: shown)
+            }
     }
 }
 
@@ -200,9 +217,9 @@ public enum Connections {
 final class KeywordCache: @unchecked Sendable {
     static let shared = KeywordCache()
     private let lock = NSLock()
-    private var store: [UUID: (stamp: Int, words: [String])] = [:]
+    private var store: [UUID: (stamp: Int, words: [(key: String, shown: String)])] = [:]
 
-    func keywords(for item: LibraryItem) -> [String] {
+    func keywords(for item: LibraryItem) -> [(key: String, shown: String)] {
         var h = Hasher()
         h.combine(item.title)
         h.combine(item.summary)
@@ -210,7 +227,7 @@ final class KeywordCache: @unchecked Sendable {
         lock.lock()
         if let hit = store[item.id], hit.stamp == stamp { lock.unlock(); return hit.words }
         lock.unlock()
-        let words = Connections.keywords(in: item.title + "\n" + (item.summary ?? ""))
+        let words = Connections.keywordPairs(in: item.title + "\n" + (item.summary ?? ""))
         lock.lock(); store[item.id] = (stamp, words); lock.unlock()
         return words
     }

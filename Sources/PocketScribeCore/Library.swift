@@ -219,6 +219,8 @@ extension LibraryItem {
     public var itemKind: ItemKind {
         if isWritten { return .written }
         if isDocument { return .document }
+        // A short recording the note writer read as a meeting is still a meeting.
+        if noteKind == .meeting { return .meeting }
         if noteKind != nil { return .voiceNote }
         if let t = transcript, t.conversationSpeakerCount >= 2 { return .meeting }
         return .recording
