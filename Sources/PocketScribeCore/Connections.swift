@@ -134,9 +134,16 @@ public enum Connections {
             let tags = (other.tags ?? []).filter { myTags.contains($0.lowercased()) }
             let theirWords = Set(KeywordCache.shared.keywords(for: other).map(\.key))
             let lowerPeople = Set(people.map { $0.lowercased() })
+            // Words in either title or tag list first, then the rarer ones.
+            let headline = (item.title + " " + other.title + " " + (item.tags ?? []).joined(separator: " ")
+                            + " " + (other.tags ?? []).joined(separator: " ")).lowercased()
+            func rank(_ w: (offset: Int, element: (key: String, shown: String))) -> (Int, Int, Int) {
+                let inHeadline = headline.contains(w.element.key) || headline.contains(w.element.shown)
+                return (inHeadline ? 0 : 1, notesWith[w.element.key] ?? 0, w.offset)
+            }
             let words = myWords.enumerated()
                 .filter { theirWords.contains($0.element.key) && !lowerPeople.contains($0.element.key) }
-                .sorted { (notesWith[$0.element.key] ?? 0, $0.offset) < (notesWith[$1.element.key] ?? 0, $1.offset) }
+                .sorted { rank($0) < rank($1) }
                 .map(\.element.shown)
             let score = 3 * people.count + 3 * tags.count + words.count
             guard score >= 3 else { continue }
@@ -246,6 +253,7 @@ extension Connections {
         "they", "thing", "think", "those", "though", "through", "under", "until", "using", "where", "which", "while",
         "whole", "whose", "would", "yours", "agreed", "asked", "based", "check", "make", "makes", "needs", "needed",
         "start", "started", "takes", "talked", "thanks", "today", "agree", "within", "without", "shall",
+        "older", "newer", "latest", "earlier", "afternoons", "mornings", "evenings", "weekly", "daily", "quick",
     ]
 
     /// Key words as the fallback finds them, for tests.
