@@ -82,8 +82,10 @@ extension LibraryTask {
     init(item: LibraryItem, index: Int, line: String, done: Bool, now: Date) {
         let parsed = ActionItem(line, speakerNames: item.speakerNames, now: now)
         // "Speaker 3: send the build" says nothing about who; show just the task.
-        let title = parsed.title.replacingOccurrences(of: #"^Speaker \d+:\s*"#, with: "", options: .regularExpression)
-        self.init(itemID: item.id, index: index, title: title.isEmpty ? parsed.title : title, due: parsed.due, dueHasTime: parsed.dueHasTime,
+        var title = parsed.title.replacingOccurrences(of: #"^Speaker \d+:\s*"#, with: "", options: .regularExpression)
+        if title.isEmpty { title = parsed.title }
+        title = title.prefix(1).uppercased() + title.dropFirst()
+        self.init(itemID: item.id, index: index, title: title, due: parsed.due, dueHasTime: parsed.dueHasTime,
                   seconds: LibraryTasks.firstTimestamp(in: line), done: done)
     }
 }
@@ -183,9 +185,9 @@ public enum Connections {
         var counts: [String: Int] = [:]
         var spellings: [String: [String: Int]] = [:]
         func add(_ root: String, _ word: String) {
+            // Which words count is decided by the dictionary form alone; the spelling is only for showing.
             let k = root.lowercased(), w = word.lowercased()
-            guard w.count >= 4, k.count >= 3, w.allSatisfy(\.isLetter), !stopwords.contains(k), !stopwords.contains(w)
-            else { return }
+            guard k.count >= 4, k.allSatisfy(\.isLetter), !stopwords.contains(k) else { return }
             counts[k, default: 0] += 1
             spellings[k, default: [:]][w, default: 0] += 1
         }

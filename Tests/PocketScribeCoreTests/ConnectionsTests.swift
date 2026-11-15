@@ -27,7 +27,7 @@ final class ConnectionsTests: XCTestCase {
 
     private let launch = """
     ## TL;DR
-    Pricing for the free tier and the paid tier is final. Support gets a shared inbox before launch.
+    Pricing for the free tier and the paid tier is final. Support gets a shared inbox before launch, and the beta build ships first.
 
     ## Action items
     - [ ] Maria: set up the shared inbox [02:20]
