@@ -67,6 +67,20 @@ final class ConnectionsTests: XCTestCase {
         XCTAssertTrue(related[0].reason.contains("Also with Maria"), related[0].reason)
     }
 
+    /// The two launch meetings, with no names given: shared words alone relate them.
+    func testMeetingsRelateByWordsAlone() {
+        let a = item("Weekly planning", planning)
+        let b = item("Launch and support", launch, daysAgo: 1)
+        let r = Connections.related(to: a, in: [a, b])
+        XCTAssertEqual(r.map(\.id), [b.id])
+        XCTAssertTrue(r.first?.reason.hasPrefix("Both mention ") == true, r.first?.reason ?? "none")
+    }
+
+    func testUnnamedSpeakerIsLeftOffTasks() {
+        let a = item("Sync", "## Action items\n- [ ] Speaker 3: review the font code [00:10]")
+        XCTAssertEqual(LibraryTasks.groups(in: [a], includeDone: false).first?.tasks.first?.title, "Review the font code")
+    }
+
     func testOneSharedWordIsNotEnough() {
         let a = item("Launch", "We talked about the launch.")
         let b = item("Party", "The launch party needs balloons.")
