@@ -7,14 +7,14 @@ struct PocketScribeApp: App {
 
     var body: some Scene {
         WindowGroup {
-            LibraryView()
+            RootView()
                 .environmentObject(model)
                 .environmentObject(model.player)
                 .environmentObject(model.settings)
                 // "Open in Pocket Scribe" / share sheet from Files, Voice Memos, Mail…
                 .onOpenURL { url in
                     if url.isFileURL { model.importFiles([url]) }
-                    else if url.host() == "voice-note" { model.startRecording(quick: true) }
+                    else if url.host() == "voice-note" { model.tab = .notes; model.startRecording(quick: true) }
                 }
                 .task { model.applyLaunchArguments() }
         }
@@ -30,6 +30,7 @@ struct NewVoiceNoteIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        AppModel.shared.tab = .notes
         AppModel.shared.startRecording(quick: true)
         return .result()
     }

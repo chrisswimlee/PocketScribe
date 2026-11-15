@@ -25,6 +25,9 @@ final class AppModel: ObservableObject {
     @Published var composingNote = false
     @Published var showTrash = false
     @Published var path: [Recording.ID] = []
+    /// Which tab is showing, and the text in the Search tab (people chips fill it in).
+    @Published var tab: AppTab = .notes
+    @Published var searchText = ""
     @Published var errorMessage: String?
     /// A short confirmation shown at the bottom of the detail screen, e.g. "Added 3 reminders".
     @Published var notice: String?
@@ -838,6 +841,13 @@ final class AppModel: ObservableObject {
             if args.bool(forKey: "sendToReminders") { sendToReminders(Array(actionItems(of: r).indices), in: id) }
         }
         if args.bool(forKey: "openSettings") { showSettings = true }
+        // -tab todos / -tab search, and -search <text> for the Search tab.
+        switch args.string(forKey: "tab") {
+        case "todos": tab = .todos
+        case "search": tab = .search
+        default: break
+        }
+        if let q = args.string(forKey: "search") { searchText = q; tab = .search }
         // -composeNote YES / -showTrash YES / -editOpened YES (with -openID)
         if args.bool(forKey: "composeNote") { composingNote = true }
         if args.bool(forKey: "showTrash") { showTrash = true }
