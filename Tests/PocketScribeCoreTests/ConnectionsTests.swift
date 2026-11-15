@@ -87,6 +87,7 @@ final class ConnectionsTests: XCTestCase {
         XCTAssertEqual(Array(words.prefix(2)), ["launch", "pricing"])
         XCTAssertFalse(words.contains("should"))
         XCTAssertFalse(words.contains("before"))
+        XCTAssertFalse(Connections.plainKeywords(in: "Ship in November, November launch").contains("november"))
     }
 
     func testOneSharedWordIsNotEnough() {

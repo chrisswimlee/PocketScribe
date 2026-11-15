@@ -122,6 +122,11 @@ public enum Connections {
         let myPeople = Set(people(of: item).map { $0.lowercased() })
         let myTags = Set((item.tags ?? []).map { $0.lowercased() })
         let myWords = KeywordCache.shared.keywords(for: item)
+        // How many notes use each word: rarer shared words say more about why two notes go together.
+        var notesWith: [String: Int] = [:]
+        for other in items where other.deletedAt == nil {
+            for w in Set(KeywordCache.shared.keywords(for: other).map(\.key)) { notesWith[w, default: 0] += 1 }
+        }
         var found: [(note: RelatedNote, date: Date)] = []
         for other in items where other.id != item.id && other.deletedAt == nil && other.status == .ready
             && other.summary?.isEmpty == false {
@@ -129,7 +134,10 @@ public enum Connections {
             let tags = (other.tags ?? []).filter { myTags.contains($0.lowercased()) }
             let theirWords = Set(KeywordCache.shared.keywords(for: other).map(\.key))
             let lowerPeople = Set(people.map { $0.lowercased() })
-            let words = myWords.filter { theirWords.contains($0.key) && !lowerPeople.contains($0.key) }.map(\.shown)
+            let words = myWords.enumerated()
+                .filter { theirWords.contains($0.element.key) && !lowerPeople.contains($0.element.key) }
+                .sorted { (notesWith[$0.element.key] ?? 0, $0.offset) < (notesWith[$1.element.key] ?? 0, $1.offset) }
+                .map(\.element.shown)
             let score = 3 * people.count + 3 * tags.count + words.count
             guard score >= 3 else { continue }
             var reasons: [String] = []
@@ -169,7 +177,8 @@ public enum Connections {
         "decision", "decisions", "detail", "details", "overview", "next", "user", "users", "lot", "kind", "number",
         "place", "case", "fact", "group", "area", "end", "example", "morning", "afternoon", "evening", "monday",
         "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "anyone", "everyone", "nothing", "way",
-        "takeaway", "takeaways", "tl;dr", "conversation", "sync", "session", "voice",
+        "takeaway", "takeaways", "tl;dr", "conversation", "sync", "session", "voice", "january", "february",
+        "march", "april", "june", "july", "august", "september", "october", "november", "december",
     ]
 
     /// The most-used nouns of a note's title and summary (not its transcript), as written
