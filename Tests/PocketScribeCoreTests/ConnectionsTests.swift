@@ -81,6 +81,14 @@ final class ConnectionsTests: XCTestCase {
         XCTAssertEqual(LibraryTasks.groups(in: [a], includeDone: false).first?.tasks.first?.title, "Review the font code")
     }
 
+    /// When the word-type model is missing, plain words still give the topic.
+    func testPlainWordFallback() {
+        let words = Connections.plainKeywords(in: "Pricing for the launch. The pricing page should launch before Friday with the shared inbox.")
+        XCTAssertEqual(Array(words.prefix(2)), ["launch", "pricing"])
+        XCTAssertFalse(words.contains("should"))
+        XCTAssertFalse(words.contains("before"))
+    }
+
     func testOneSharedWordIsNotEnough() {
         let a = item("Launch", "We talked about the launch.")
         let b = item("Party", "The launch party needs balloons.")

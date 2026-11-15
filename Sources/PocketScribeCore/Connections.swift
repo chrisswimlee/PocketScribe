@@ -192,18 +192,23 @@ public enum Connections {
             spellings[k, default: [:]][w, default: 0] += 1
         }
         #if canImport(NaturalLanguage)
+        var tagged = false
         let tagger = NLTagger(tagSchemes: [.lexicalClass, .lemma])
         tagger.string = t
         tagger.enumerateTags(in: t.startIndex..<t.endIndex, unit: .word, scheme: .lexicalClass,
                              options: [.omitPunctuation, .omitWhitespace, .omitOther]) { tag, r in
             guard tag == .noun else { return true }
+            tagged = true
             let word = String(t[r])
             let lemma = tagger.tag(at: r.lowerBound, unit: .word, scheme: .lemma).0?.rawValue
             add(lemma.flatMap { $0.isEmpty ? nil : $0 } ?? word, word)
             return true
         }
+        // The word-type model can be missing (seen on an iOS 27 simulator: every word "OtherWord"),
+        // so with no nouns at all fall back to plain words.
+        if !tagged { plainWords(t, add) }
         #else
-        for w in t.split(whereSeparator: { !$0.isLetter }) where w.count >= 5 { add(String(w), String(w)) }
+        plainWords(t, add)
         #endif
         return counts.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
             .prefix(limit)
@@ -212,6 +217,36 @@ public enum Connections {
                 let shown = spellings[k]?.max { $0.value != $1.value ? $0.value < $1.value : $0.key > $1.key }?.key ?? k
                 return (key: k, shown: shown)
             }
+    }
+}
+
+extension Connections {
+    /// Words of 5 or more letters that aren't common filler, for when nouns can't be told apart.
+    static func plainWords(_ text: String, _ add: (String, String) -> Void) {
+        for w in text.split(whereSeparator: { !$0.isLetter }) where w.count >= 5 {
+            let s = String(w)
+            if !functionWords.contains(s.lowercased()) { add(s, s) }
+        }
+    }
+
+    static let functionWords: Set<String> = [
+        "about", "above", "after", "again", "against", "along", "already", "also", "although", "among", "another", "around",
+        "because", "before", "being", "below", "between", "both", "could", "doing", "during", "either", "every", "first",
+        "going", "great", "having", "into", "itself", "later", "least", "maybe", "might", "never", "other", "others",
+        "ought", "really", "right", "since", "should", "still", "their", "theirs", "them", "themselves", "there", "these",
+        "they", "thing", "think", "those", "though", "through", "under", "until", "using", "where", "which", "while",
+        "whole", "whose", "would", "yours", "agreed", "asked", "based", "check", "make", "makes", "needs", "needed",
+        "start", "started", "takes", "talked", "thanks", "today", "agree", "within", "without", "shall",
+    ]
+
+    /// Key words as the fallback finds them, for tests.
+    static func plainKeywords(in text: String) -> [String] {
+        var counts: [String: Int] = [:]
+        plainWords(text) { root, _ in
+            let k = root.lowercased()
+            if !stopwords.contains(k) { counts[k, default: 0] += 1 }
+        }
+        return counts.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }.map(\.key)
     }
 }
 
