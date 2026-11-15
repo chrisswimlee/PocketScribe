@@ -1,6 +1,9 @@
 import XCTest
 @testable import PocketScribeCore
 
+// DeveloperToolsSupport (pulled in with SwiftUI) also has a LibraryItem.
+private typealias LibraryItem = PocketScribeCore.LibraryItem
+
 final class ConnectionsTests: XCTestCase {
     private func item(_ title: String, _ summary: String, daysAgo: Double = 0, names: [Int: String]? = nil,
                       tags: [String]? = nil, note: Bool = false) -> LibraryItem {
