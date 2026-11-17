@@ -109,7 +109,8 @@ struct ConnectedSection: View {
                                 Image(systemName: other.itemKind.symbol).foregroundStyle(.tint).frame(width: 22)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(other.title).fontWeight(.semibold).lineLimit(1)
-                                    Text(rel.reason).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                    Text(other.createdAt.formatted(.dateTime.month(.abbreviated).day()) + " · " + rel.reason)
+                                        .font(.caption).foregroundStyle(.secondary).lineLimit(2)
                                 }
                                 Spacer(minLength: 0)
                             }
@@ -146,5 +147,105 @@ struct ConnectedSection: View {
             .background(tint.opacity(0.12), in: Capsule())
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// ⇧⌘O: type a few letters of a note's title, words in it, or a person's name, then Return.
+struct QuickOpenSheet: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+    @State private var highlighted = 0
+    @FocusState private var focused: Bool
+
+    enum Hit: Identifiable {
+        case note(Recording), person(String)
+        var id: String {
+            switch self {
+            case .note(let r): return r.id.uuidString
+            case .person(let p): return "person-" + p
+            }
+        }
+    }
+
+    private var hits: [Hit] {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return model.recordings.prefix(8).map { .note($0) } }
+        let people = Connections.allPeople(in: model.recordings)
+            .filter { $0.localizedCaseInsensitiveContains(q) }.prefix(3).map { Hit.person($0) }
+        let notes = model.recordings.filter { LibrarySearch.matches($0, q) }
+        // Title matches before matches deeper in the text.
+        let ordered = notes.filter { $0.title.localizedCaseInsensitiveContains(q) }
+            + notes.filter { !$0.title.localizedCaseInsensitiveContains(q) }
+        return people + ordered.prefix(12).map { .note($0) }
+    }
+
+    var body: some View {
+        let hits = hits
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("Open a note or a person…", text: $query)
+                    .textFieldStyle(.plain)
+                    .font(.title3)
+                    .focused($focused)
+                    .onSubmit { if hits.indices.contains(highlighted) { open(hits[highlighted]) } }
+                    .onKeyPress(.downArrow) { highlighted = min(highlighted + 1, max(hits.count - 1, 0)); return .handled }
+                    .onKeyPress(.upArrow) { highlighted = max(highlighted - 1, 0); return .handled }
+                    .onKeyPress(.escape) { dismiss(); return .handled }
+            }
+            .padding(14)
+            Divider()
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 2) {
+                        ForEach(Array(hits.enumerated()), id: \.element.id) { i, hit in
+                            row(hit, selected: i == highlighted)
+                                .id(i)
+                                .onTapGesture { open(hit) }
+                        }
+                    }
+                    .padding(6)
+                }
+                .onChange(of: highlighted) { _, i in proxy.scrollTo(i) }
+            }
+            .overlay {
+                if hits.isEmpty { Text("Nothing matches “\(query)”").foregroundStyle(.secondary) }
+            }
+        }
+        .frame(width: 540, height: 400)
+        .onAppear { focused = true }
+        .onChange(of: query) { highlighted = 0 }
+    }
+
+    @ViewBuilder private func row(_ hit: Hit, selected: Bool) -> some View {
+        HStack(spacing: 10) {
+            switch hit {
+            case .note(let r):
+                Image(systemName: r.itemKind.symbol).frame(width: 20)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(r.title).lineLimit(1)
+                    Text(r.createdAt.formatted(date: .abbreviated, time: .omitted))
+                        .font(.caption).foregroundStyle(selected ? Color.white.opacity(0.8) : Color.secondary)
+                }
+            case .person(let p):
+                Image(systemName: "person.fill").frame(width: 20)
+                Text(p)
+                Text("Every note with \(p)").font(.caption).foregroundStyle(selected ? Color.white.opacity(0.8) : Color.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .foregroundStyle(selected ? Color.white : Color.primary)
+        .background(selected ? Color.accentColor : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+        .contentShape(Rectangle())
+    }
+
+    private func open(_ hit: Hit) {
+        switch hit {
+        case .note(let r): model.selection = r.id
+        case .person(let p): model.search = p
+        }
+        dismiss()
     }
 }

@@ -357,7 +357,8 @@ struct ConnectedSection: View {
                                 Image(systemName: other.itemKind.symbol).foregroundStyle(.tint).frame(width: 24)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(other.title).font(.subheadline.weight(.semibold)).lineLimit(1)
-                                    Text(rel.reason).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                    Text(other.createdAt.formatted(.dateTime.month(.abbreviated).day()) + " · " + rel.reason)
+                                        .font(.caption).foregroundStyle(.secondary).lineLimit(2)
                                 }
                                 Spacer(minLength: 0)
                                 Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)

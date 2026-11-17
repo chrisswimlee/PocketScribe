@@ -33,6 +33,7 @@ struct ContentView: View {
             .overlay(alignment: .bottom) { UndoDeleteToast() }
         }
         .toolbar { toolbar }
+        .sheet(isPresented: $model.showQuickOpen) { QuickOpenSheet() }
         .fileImporter(isPresented: $model.showImporter, allowedContentTypes: AppModel.importTypes,
                       allowsMultipleSelection: true) { result in
             if case .success(let urls) = result { model.importFiles(urls) }

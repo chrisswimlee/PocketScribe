@@ -30,6 +30,8 @@ final class AppModel: ObservableObject {
     @Published var page: SidebarPage = .notes
     /// The sidebar's search text (people and tags in a note fill it in).
     @Published var search = ""
+    /// The Open Quickly panel (⇧⌘O).
+    @Published var showQuickOpen = false
     @Published var errorMessage: String?
     /// A short confirmation shown at the bottom of the detail view, e.g. "Added 3 reminders".
     @Published var notice: String?

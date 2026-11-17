@@ -359,9 +359,10 @@ struct SummaryBody: View {
     }
 
     private func md(_ text: String) -> some View {
-        Markdown(SourceLinker.linkAll(text, pages: recording.isDocument))
+        Markdown(SourceLinker.linkAll(SummaryLayout.forDisplay(text), pages: recording.isDocument))
             .markdownTextStyle { FontSize(textSize) }
             .markdownTextStyle(\.link) { ForegroundColor(.accentColor); FontWeight(.semibold); FontDigitVariant(.monospaced) }
+            .summaryHeadings()
     }
 
     /// "[01:23]" → "[01:23](seek://83)"
@@ -811,5 +812,21 @@ struct DeletedBanner: View {
         guard let d = recording.deletedAt else { return "" }
         let left = max(0, LibraryFiles.trashDays - (Calendar.current.dateComponents([.day], from: d, to: Date()).day ?? 0))
         return "In Recently Deleted. Removed for good in \(left) day\(left == 1 ? "" : "s")."
+    }
+}
+
+extension View {
+    /// Section headings sized below the note's title: "In short", "Key points" read as sections, not banners.
+    func summaryHeadings() -> some View {
+        self
+            .markdownBlockStyle(\.heading1) { c in
+                c.label.markdownMargin(top: 20, bottom: 8).markdownTextStyle { FontWeight(.bold); FontSize(.em(1.3)) }
+            }
+            .markdownBlockStyle(\.heading2) { c in
+                c.label.markdownMargin(top: 18, bottom: 6).markdownTextStyle { FontWeight(.semibold); FontSize(.em(1.15)) }
+            }
+            .markdownBlockStyle(\.heading3) { c in
+                c.label.markdownMargin(top: 14, bottom: 4).markdownTextStyle { FontWeight(.semibold); FontSize(.em(1.0)) }
+            }
     }
 }

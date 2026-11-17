@@ -90,6 +90,9 @@ struct AppCommands: Commands {
                 .keyboardShortcut("n")
             Button("Add Files…") { model.showImporter = true }
                 .keyboardShortcut("o")
+            Divider()
+            Button("Open Quickly…") { model.showQuickOpen = true }
+                .keyboardShortcut("o", modifiers: [.command, .shift])
         }
         CommandGroup(replacing: .saveItem) {
             Button("Export as Markdown…") { model.exportSelected() }
