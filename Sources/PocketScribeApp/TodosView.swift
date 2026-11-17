@@ -109,7 +109,8 @@ struct ConnectedSection: View {
                                 Image(systemName: other.itemKind.symbol).foregroundStyle(.tint).frame(width: 22)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(other.title).fontWeight(.semibold).lineLimit(1)
-                                    Text(rel.reason).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                    Text(other.createdAt.formatted(.dateTime.month(.abbreviated).day()) + " · " + rel.reason)
+                                        .font(.caption).foregroundStyle(.secondary).lineLimit(2)
                                 }
                                 Spacer(minLength: 0)
                             }
