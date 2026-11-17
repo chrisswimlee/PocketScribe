@@ -102,10 +102,88 @@ final class StyleAndNamesTests: XCTestCase {
         XCTAssertTrue(owners.contains("- [ ] Speaker 3: send the build to Tom"))
         let merged = Summarizer.mergeDuplicateActions(owners)
         XCTAssertEqual(SummaryLayout.splitActions(merged).actions, [
-            "Speaker 1: set up the shared inbox [00:14]",
+            "Speaker 1: set up the shared inbox (by Wednesday) [00:14]",
             "Speaker 3: send the build to Tom (by Wednesday)",
             "Review the help center articles",
         ])
         XCTAssertTrue(merged.contains("## Decisions"))
+    }
+
+    // MARK: Follow-ups from the PR 1 review
+
+    private func actions(_ items: [String]) -> [String] {
+        let md = "## Action items\n" + items.map { "- [ ] " + $0 }.joined(separator: "\n") + "\n\n## Decisions\n- None."
+        return SummaryLayout.splitActions(Summarizer.mergeDuplicateActions(md)).actions
+    }
+
+    func testTasksForDifferentPeopleStayApart() {
+        XCTAssertEqual(actions([
+            "Speaker 3: send the build to Tom Wednesday morning",
+            "Speaker 3: send the build to David Wednesday morning",
+        ]).count, 2)
+    }
+
+    func testSimilarTasksWithDifferentOwnersStayApart() {
+        XCTAssertEqual(actions([
+            "Speaker 1: review the help center articles",
+            "Speaker 2: review the help center articles before launch",
+        ]).count, 2)
+    }
+
+    func testMergedTaskKeepsALaterOwnerAndDeadline() {
+        XCTAssertEqual(actions([
+            "Set up the shared inbox [00:14](seek://14)",
+            "Speaker 3: set up the shared inbox and routing (by Friday)",
+        ]), ["Speaker 3: Set up the shared inbox (by Friday) [00:14](seek://14)"])
+    }
+
+    func testSoloMemoSplitIntoTwoVoicesIsANote() {
+        // One person thinking aloud for 70 s; the labeler put a few stretches under a second voice.
+        let a = "I need to remember to book the venue for the offsite and check the catering budget with finance before Friday"
+        let b = "and also the slides for the keynote need another pass before we share them"
+        let segs = [seg(0, 1, a), seg(10, 2, b), seg(14, 1, a), seg(24, 2, b), seg(28, 1, a), seg(40, 1, a)]
+        let t = Transcript(text: "", segments: segs, audioDuration: 70, processingTime: 0)
+        XCTAssertEqual(t.conversationSpeakerCount, 2)
+        XCTAssertEqual(Summarizer.automaticStyle(for: t), .note)
+        XCTAssertTrue(shortMeeting.hasBackAndForth)
+    }
+
+    func testDismissedSuggestionsStillNameOwners() {
+        let summary = """
+        ## Action items
+        - [ ] Speaker 1: run the launch checklist
+        - [ ] Speaker 3: send the build to Tom
+        Speaker 1 agreed.
+        """
+        var item = LibraryItem(title: "Sync", audioFileName: "a.caf", status: .ready)
+        item.transcript = shortMeeting
+        item.summary = summary
+        item.nameSuggestionsDismissed = true
+        XCTAssertEqual(item.pendingNameSuggestions, [:])
+        let shown = item.displaySummary ?? ""
+        XCTAssertTrue(shown.contains("- [ ] Maria: run the launch checklist"))
+        XCTAssertTrue(shown.contains("- [ ] David: send the build to Tom"))
+        XCTAssertTrue(shown.contains("Speaker 1 agreed."))
+        // A name the user typed wins over the guess.
+        item.speakerNames = [1: "Maria R."]
+        XCTAssertTrue((item.displaySummary ?? "").contains("- [ ] Maria R.: run the launch checklist"))
+        XCTAssertTrue((item.displaySummary ?? "").contains("Maria R. agreed."))
+    }
+
+    func testNameSuggestionsOnAnHourLongMeetingAreQuick() {
+        var segs: [TranscriptSegment] = []
+        let lines = ["Thanks Maria, that makes sense to me and I agree with the plan.",
+                     "Good point, Tom. Let's move on to the next item on the agenda then.",
+                     "David, can you share the numbers from last week with everyone here?"]
+        for i in 0..<1800 { segs.append(seg(Double(i) * 2, i % 3 + 1, lines[i % 3])) }
+        let t = Transcript(text: "", segments: segs, audioDuration: 3600, processingTime: 0)
+        let start = Date()
+        _ = Speakers.suggestedNames(in: t)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 5)
+        let id = UUID()
+        let first = SpeakerSuggestionCache.shared.suggestions(for: id, transcript: t)
+        let again = Date()
+        XCTAssertEqual(SpeakerSuggestionCache.shared.suggestions(for: id, transcript: t), first)
+        XCTAssertLessThan(Date().timeIntervalSince(again), 0.05)
     }
 }

@@ -12,7 +12,7 @@ struct SettingsView: View {
         Form {
             Section("Voice notes") {
                 Toggle("Dictate from anywhere with \(GlobalHotKey.displayString)", isOn: $settings.voiceShortcutEnabled)
-                Text("Tap to start and tap again to stop, or hold while you talk. Recordings under 3 minutes become a cleaned-up note; longer ones get a meeting summary.")
+                Text("Tap to start and tap again to stop, or hold while you talk. What you say with the shortcut always becomes a cleaned-up note. New Recording makes a meeting summary when people take turns talking, or for anything over 3 minutes.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Speech to text") {
@@ -23,7 +23,7 @@ struct SettingsView: View {
                 Text("Runs on the Neural Engine with FluidAudio, the engine behind FluidVoice.")
                     .font(.caption).foregroundStyle(.secondary)
                 Toggle("Label speakers in meetings", isOn: $settings.labelSpeakers)
-                Text("Recordings over 3 minutes get Speaker 1, Speaker 2… labels, worked out on this Mac. Click a name in the transcript to rename it.")
+                Text("Recordings over 30 seconds get Speaker 1, Speaker 2… labels, worked out on this Mac. Click a name in the transcript to rename it.")
                     .font(.caption).foregroundStyle(.secondary)
             }
 

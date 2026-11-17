@@ -32,6 +32,8 @@ final class AppModel: ObservableObject {
     // Progress of the item being processed
     @Published var progress: Double?
     @Published var progressText = ""
+    /// When the current job started, for the processing screen's elapsed time.
+    @Published var workStartedAt: Date?
 
     // Recording
     @Published var isRecording = false
@@ -214,7 +216,7 @@ final class AppModel: ObservableObject {
 
     /// The text the editor starts from: what the summary or note shows, with speaker names filled in.
     static func editableText(_ r: Recording) -> String {
-        Speakers.apply(r.speakerNames, to: r.summary ?? "")
+        r.displaySummary ?? ""
     }
 
     /// Adds a note typed in the app and opens it.
@@ -374,7 +376,8 @@ final class AppModel: ObservableObject {
         if r.noteKind != nil {
             return SummaryLayout.noteBlocks(s).compactMap { if case .task(_, let t) = $0 { return t } else { return nil } }
         }
-        return SummaryLayout.splitActions(s).actions
+        // With owners shown as the names guessed from the recording, as on screen.
+        return SummaryLayout.splitActions(r.displaySummary ?? s).actions
     }
 
     func sendToReminders(_ indices: [Int], in id: Recording.ID) {
@@ -505,6 +508,7 @@ final class AppModel: ObservableObject {
         update(id) { $0.status = .processing; $0.errorMessage = nil }
         progress = 0
         progressText = "Starting…"
+        workStartedAt = Date()
         beginBackgroundTask()
         worker = Task { [weak self] in
             await self?.run(id)

@@ -25,7 +25,7 @@ The Parakeet model (~500 MB) downloads once on first run to `~/Library/Applicati
 
 ## Speaker labels and action items
 
-- Recordings over 3 minutes get **speaker labels** (Speaker 1, Speaker 2…) from FluidAudio's offline
+- Recordings over 30 seconds get **speaker labels** (Speaker 1, Speaker 2…) from FluidAudio's offline
   diarizer (pyannote + WeSpeaker + VBx on Core ML, ~30 MB of models downloaded once). Click or tap a
   name in the transcript to rename it; the new name is used in the transcript, the summary and exports.
   Turn it off in Settings, or `--no-speakers` in the CLI. Older recordings show a "Label speakers" button.
