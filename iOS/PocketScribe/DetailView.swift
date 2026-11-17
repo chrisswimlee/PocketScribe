@@ -228,6 +228,7 @@ struct DetailView: View {
                 .font(.caption)
                 .padding(.top, 4)
             }
+            ConnectedSection(recording: r)
             if let e = r.engineName {
                 Text("Written on this device by \(e)").font(.caption).foregroundStyle(.tertiary).padding(.top, 8)
             }

@@ -3,19 +3,6 @@ import SwiftUI
 
 struct LibraryView: View {
     @EnvironmentObject var model: AppModel
-    @State private var search = ""
-
-    private var filtered: [Recording] {
-        let q = search.trimmingCharacters(in: .whitespaces)
-        guard !q.isEmpty else { return model.recordings }
-        return model.recordings.filter {
-            $0.title.localizedCaseInsensitiveContains(q)
-                || ($0.summary ?? "").localizedCaseInsensitiveContains(q)
-                || ($0.transcript?.text ?? "").localizedCaseInsensitiveContains(q)
-                || ($0.document?.text ?? "").localizedCaseInsensitiveContains(q)
-                || ($0.tags ?? []).contains { $0.localizedCaseInsensitiveContains(q) }
-        }
-    }
 
     var body: some View {
         NavigationStack(path: $model.path) {
@@ -24,7 +11,7 @@ struct LibraryView: View {
                     EmptyLibrary()
                 } else {
                     List {
-                        ForEach(LibrarySections.group(filtered), id: \.title) { group in
+                        ForEach(LibrarySections.group(model.recordings), id: \.title) { group in
                             Section {
                                 ForEach(group.items) { r in
                                     NavigationLink(value: r.id) { RecordingRow(recording: r) }
@@ -38,7 +25,7 @@ struct LibraryView: View {
                                 Text(group.title)
                             }
                         }
-                        if !model.trash.isEmpty, search.isEmpty {
+                        if !model.trash.isEmpty {
                             Button { model.showTrash = true } label: {
                                 Label("Recently Deleted (\(model.trash.count))", systemImage: "trash")
                                     .font(.subheadline).foregroundStyle(.secondary)
@@ -46,48 +33,18 @@ struct LibraryView: View {
                         }
                     }
                     .listStyle(.plain)
-                    .searchable(text: $search, prompt: "Search notes and transcripts")
-                    .overlay {
-                        if filtered.isEmpty { ContentUnavailableView.search(text: search) }
-                    }
+                    // Room for the + button under the last row.
+                    .contentMargins(.bottom, 88, for: .scrollContent)
                 }
             }
-            .navigationTitle("Pocket Scribe")
+            .navigationTitle("Notes")
             .navigationDestination(for: Recording.ID.self) { id in DetailView(id: id) }
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button { model.showSettings = true } label: { Label("Settings", systemImage: "gearshape") }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { model.showImporter = true } label: { Label("Import audio or documents", systemImage: "square.and.arrow.down") }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { model.composingNote = true } label: { Label("New note", systemImage: "square.and.pencil") }
-                }
             }
-            .safeAreaInset(edge: .bottom) {
-                VStack(spacing: 0) {
-                    UndoDeleteToast()
-                    RecordBar()
-                }
-            }
-        }
-        .fileImporter(isPresented: $model.showImporter, allowedContentTypes: AppModel.importTypes,
-                      allowsMultipleSelection: true) { result in
-            if case .success(let urls) = result { model.importFiles(urls) }
-        }
-        .sheet(isPresented: $model.showSettings) { SettingsView() }
-        .sheet(isPresented: $model.composingNote) { NoteEditorSheet(recording: nil) }
-        .sheet(isPresented: $model.showTrash) { TrashView() }
-        .fullScreenCover(isPresented: Binding(
-            get: { model.isRecording && !model.isQuickNote }, set: { _ in })
-        ) { RecordingScreen() }
-        .alert("Something went wrong", isPresented: Binding(
-            get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })
-        ) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(model.errorMessage ?? "")
+            .safeAreaInset(edge: .bottom) { CaptureDock(tab: .notes) }
         }
     }
 }
@@ -97,7 +54,7 @@ private struct EmptyLibrary: View {
         ContentUnavailableView {
             Label("No recordings yet", systemImage: "waveform")
         } description: {
-            Text("**Record** a meeting or lecture to get a transcript, a summary and action items.\n**Quick note**: tap the mic, or hold it and talk, for a short note in your own words.\nYou can also write a note or import a PDF, Word file or slide deck. Everything stays on this iPhone.")
+            Text("Tap **+** to record a meeting or lecture, take a voice note, write, or import a PDF, Word file or slide deck.\nOr **hold +** and talk for a quick note in your own words. Everything stays on this iPhone.")
         }
     }
 }
@@ -159,87 +116,10 @@ struct RecordingRow: View {
     }
 }
 
-// MARK: - Record bar
+// MARK: - Voice note bar
 
-/// Bottom bar: a big record button for long recordings, and a mic for quick notes
-/// (tap to start and stop, or hold to talk and let go to finish).
-struct RecordBar: View {
-    @EnvironmentObject var model: AppModel
-    @State private var pressedAt: Date?
-    @State private var holding = false
-
-    var body: some View {
-        VStack(spacing: 10) {
-            if model.isRecording && model.isQuickNote { QuickNoteBanner() }
-            HStack(alignment: .top, spacing: 28) {
-                Spacer()
-                VStack(spacing: 4) {
-                    Button { model.toggleRecording(quick: false) } label: {
-                        Label("Record", systemImage: "record.circle")
-                            .font(.headline)
-                            .padding(.horizontal, 22).padding(.vertical, 14)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.red)
-                    .buttonBorderShape(.capsule)
-                    .disabled(model.isRecording)
-                    .accessibilityHint("Starts a long recording, such as a meeting or lecture")
-                    .frame(height: 56)
-                    caption("Meeting or lecture")
-                }
-
-                VStack(spacing: 4) {
-                    quickNoteButton
-                    caption(model.isRecording && model.isQuickNote ? "Tap to finish" : "Quick note")
-                }
-                Spacer()
-            }
-        }
-        .padding(.top, 10)
-        .padding(.bottom, 6)
-        .background(.bar)
-    }
-
-    private func caption(_ text: String) -> some View {
-        Text(text).font(.caption2).foregroundStyle(.secondary).accessibilityHidden(true)
-    }
-
-    private var quickNoteButton: some View {
-        let active = model.isRecording && model.isQuickNote
-        return Image(systemName: active ? "stop.fill" : "mic.fill")
-            .font(.title2.weight(.semibold))
-            .foregroundStyle(.white)
-            .frame(width: 56, height: 56)
-            .background(Circle().fill(active ? Color.red : Color.accentColor))
-            .scaleEffect(pressedAt != nil ? 1.15 : 1)
-            .animation(.spring(duration: 0.25), value: pressedAt != nil)
-            .contentShape(Circle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in
-                        guard pressedAt == nil else { return }
-                        let down = Date()
-                        pressedAt = down
-                        // Still held after a moment: push-to-talk.
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                            if pressedAt == down, !model.isRecording { holding = true; model.holdBegan() }
-                        }
-                    }
-                    .onEnded { _ in
-                        pressedAt = nil
-                        if holding { holding = false; model.holdEnded() } else { model.toggleRecording(quick: true) }
-                    }
-            )
-            .disabled(model.isRecording && !model.isQuickNote)
-            .accessibilityLabel(active ? "Stop quick note" : "Quick note")
-            .accessibilityHint("Tap to start and stop, or hold to talk")
-            .accessibilityAddTraits(.isButton)
-            .accessibilityAction { model.toggleRecording(quick: true) }
-    }
-}
-
-/// Shown above the record bar while a quick note is recording.
-private struct QuickNoteBanner: View {
+/// Shown next to the + button while a quick voice note is recording.
+struct QuickNoteBanner: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View {
@@ -253,7 +133,6 @@ private struct QuickNoteBanner: View {
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
         .background(.thinMaterial, in: Capsule())
-        .padding(.horizontal)
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 

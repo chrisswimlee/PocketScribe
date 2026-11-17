@@ -88,6 +88,9 @@ struct DetailView: View {
                             }
                             .font(.caption)
                         }
+                        if recording.status == .ready, recording.deletedAt == nil {
+                            ConnectedSection(recording: recording)
+                        }
                     }
                     .frame(maxWidth: 760, alignment: .leading)
                     .padding(28)

@@ -10,20 +10,21 @@ enum DetailTab: String, CaseIterable {
 
 struct ContentView: View {
     @EnvironmentObject var model: AppModel
-    @State private var search = ""
     @State private var dropTargeted = false
     @State private var tab: DetailTab = .summary
     @State private var renameText = ""
 
     var body: some View {
         NavigationSplitView {
-            Sidebar(search: search)
+            Sidebar(search: model.search)
                 .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 360)
-                .searchable(text: $search, placement: .sidebar, prompt: "Search recordings")
+                .searchable(text: $model.search, placement: .sidebar, prompt: "Search notes and people")
         } detail: {
             VStack(spacing: 0) {
                 if model.isRecording { RecordingBanner() }
-                if let r = model.selected {
+                if model.selection == nil, model.page == .todos {
+                    TodosView()
+                } else if let r = model.selected {
                     DetailView(recording: r, tab: $tab)
                 } else {
                     EmptyDetail()
@@ -115,15 +116,7 @@ struct ContentView: View {
                 }
                 .help("Edit the text (⌘E)")
             }
-            Button { model.newNote() } label: {
-                Label("New Note", systemImage: "square.and.pencil")
-            }
-            .help("Write a new note (⌘N)")
-            Button { model.showImporter = true } label: {
-                Label("Add Files", systemImage: "plus")
-            }
-            .help("Add audio, video, PDF, Word, PowerPoint or text files (⌘O)")
-            RecordButton()
+            if model.isRecording { RecordButton() } else { CaptureMenu() }
         }
     }
 }
@@ -141,6 +134,28 @@ struct RecordButton: View {
         .buttonStyle(.borderedProminent)
         .controlSize(prominent ? .large : .regular)
         .help(model.isRecording ? "Stop and transcribe (⇧⌘R)" : "Start a new recording (⇧⌘R)")
+    }
+}
+
+/// One button for every way in: write, dictate, record, or add files.
+struct CaptureMenu: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        Menu {
+            Button { model.newNote() } label: { Label("New Note", systemImage: "square.and.pencil") }
+            Button { model.startVoiceNote() } label: {
+                Label("Voice Note (\(GlobalHotKey.displayString))", systemImage: "mic")
+            }
+            Button { model.toggleRecording() } label: {
+                Label("Record Meeting or Lecture", systemImage: "record.circle")
+            }
+            Divider()
+            Button { model.showImporter = true } label: { Label("Add Files…", systemImage: "square.and.arrow.down") }
+        } label: {
+            Label("New", systemImage: "plus")
+        }
+        .help("Write a note (⌘N), dictate one (\(GlobalHotKey.displayString)), record a meeting (⇧⌘R) or add files (⌘O)")
     }
 }
 
@@ -211,15 +226,7 @@ struct Sidebar: View {
     @State private var showTrash = false
 
     private var filtered: [Recording] {
-        let q = search.trimmingCharacters(in: .whitespaces)
-        guard !q.isEmpty else { return model.recordings }
-        return model.recordings.filter {
-            $0.title.localizedCaseInsensitiveContains(q)
-                || ($0.summary?.localizedCaseInsensitiveContains(q) ?? false)
-                || ($0.transcript?.text.localizedCaseInsensitiveContains(q) ?? false)
-                || ($0.document?.text.localizedCaseInsensitiveContains(q) ?? false)
-                || ($0.tags ?? []).contains { $0.localizedCaseInsensitiveContains(q.trimmingCharacters(in: CharacterSet(charactersIn: "#"))) }
-        }
+        model.recordings.filter { LibrarySearch.matches($0, search) }
     }
 
     private var groups: [(String, [Recording])] {
@@ -241,6 +248,10 @@ struct Sidebar: View {
 
     var body: some View {
         List(selection: $model.selection) {
+            Section {
+                pageRow("All Notes", icon: "note.text", page: .notes, count: model.recordings.count)
+                pageRow("To-dos", icon: "checklist", page: .todos, count: LibraryTasks.openCount(in: model.recordings))
+            }
             ForEach(groups, id: \.0) { name, items in
                 Section(name) {
                     ForEach(items) { r in
@@ -303,6 +314,27 @@ struct Sidebar: View {
                 ContentUnavailableView.search(text: search)
             }
         }
+    }
+}
+
+extension Sidebar {
+    /// "All Notes" and "To-dos" at the top of the sidebar. Not list selections, so picking a note
+    /// below still works as before.
+    func pageRow(_ title: String, icon: String, page: SidebarPage, count: Int) -> some View {
+        let current = model.selection == nil && model.page == page
+        return Button {
+            model.selection = nil
+            model.page = page
+        } label: {
+            HStack {
+                Label(title, systemImage: icon)
+                Spacer()
+                if count > 0 { Text("\(count)").foregroundStyle(.secondary).monospacedDigit() }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(current ? Color.accentColor.opacity(0.18) : Color.clear)
     }
 }
 

@@ -21,8 +21,15 @@ final class AppModel: ObservableObject {
     private var pendingRewrite: (() -> Void)?
     @Published var confirmEmptyTrash = false
     @Published var selection: Recording.ID? {
-        didSet { player.load(selected.flatMap { $0.hasAudio ? audioURL(for: $0) : nil }) }
+        didSet {
+            player.load(selected.flatMap { $0.hasAudio ? audioURL(for: $0) : nil })
+            if selection != nil { page = .notes }
+        }
     }
+    /// What the detail area shows when no note is picked: the library or the To-dos list.
+    @Published var page: SidebarPage = .notes
+    /// The sidebar's search text (people and tags in a note fill it in).
+    @Published var search = ""
     @Published var errorMessage: String?
     /// A short confirmation shown at the bottom of the detail view, e.g. "Added 3 reminders".
     @Published var notice: String?
@@ -739,6 +746,14 @@ final class AppModel: ObservableObject {
     private var pendingStopAfterStart = false
 
     // MARK: Recording
+
+    /// A voice note from the + menu: same as pressing the voice shortcut once (tap it again to stop).
+    func startVoiceNote() {
+        guard !isRecording else { return }
+        recordingFromShortcut = true
+        pendingStopAfterStart = false
+        startRecording()
+    }
 
     func toggleRecording() {
         if isRecording { stopRecording() } else { recordingFromShortcut = false; pendingStopAfterStart = false; startRecording() }

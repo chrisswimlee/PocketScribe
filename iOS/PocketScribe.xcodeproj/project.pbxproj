@@ -15,6 +15,7 @@
 		A2D70E492C24D633ACCBB228 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4F73B384925AF196CFE4E7BE /* PrivacyInfo.xcprivacy */; };
 		C0BF127C800806DB5B051021 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5FDA8BB602E4D01236FDBE7 /* SettingsView.swift */; };
 		C20FCE7B60E7F717F0BAF865 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7880DBF2865B0606DA48B8C4 /* LibraryView.swift */; };
+		E8C6BF63C08CF998FBC34DF0 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A7A8EDF78FDF058961EEF4A /* RootView.swift */; };
 		F4DBF765155C2F3BF5267D54 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 02D5043ED7354423AEB9238A /* Assets.xcassets */; };
 		F739597991FB5C1FED7C7732 /* DetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A00006316D88C96579EDF7A /* DetailView.swift */; };
 /* End PBXBuildFile section */
@@ -24,6 +25,7 @@
 		2507100E8C37B23633A45DB7 /* PocketScribe.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PocketScribe.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2AA1AA41E195B8D042576D82 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		306C8D90826D000ABDE3BA5C /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		4A7A8EDF78FDF058961EEF4A /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		4F73B384925AF196CFE4E7BE /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		7880DBF2865B0606DA48B8C4 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		7A00006316D88C96579EDF7A /* DetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailView.swift; sourceTree = "<group>"; };
@@ -89,6 +91,7 @@
 				2AA1AA41E195B8D042576D82 /* Info.plist */,
 				7880DBF2865B0606DA48B8C4 /* LibraryView.swift */,
 				DA2C7DC1CC91F3C82EEE9FF6 /* PocketScribeApp.swift */,
+				4A7A8EDF78FDF058961EEF4A /* RootView.swift */,
 				D5FDA8BB602E4D01236FDBE7 /* SettingsView.swift */,
 				E87498E5E0EDF087245B8367 /* Support.swift */,
 			);
@@ -186,6 +189,7 @@
 				F739597991FB5C1FED7C7732 /* DetailView.swift in Sources */,
 				C20FCE7B60E7F717F0BAF865 /* LibraryView.swift in Sources */,
 				6154271774359C9C861DC5C3 /* PocketScribeApp.swift in Sources */,
+				E8C6BF63C08CF998FBC34DF0 /* RootView.swift in Sources */,
 				C0BF127C800806DB5B051021 /* SettingsView.swift in Sources */,
 				063CC6C3BB41A56EF4D21E93 /* Support.swift in Sources */,
 			);
