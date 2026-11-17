@@ -268,3 +268,17 @@ extension SummaryLayout {
         return (rest, body.isEmpty ? nil : body)
     }
 }
+
+extension SummaryLayout {
+    /// The summary as the reader sees it: "In short" instead of the "TL;DR" heading, and no
+    /// leftover filler lines such as "No more tasks." that the model sometimes adds.
+    public static func forDisplay(_ md: String) -> String {
+        let filler = #"^(?:[-*]\s*)?(?:no (?:more |other |further |additional )?(?:tasks|action items|to-?dos)(?: (?:were )?(?:mentioned|found|identified))?|none)\.?$"#
+        return md.components(separatedBy: "\n").compactMap { line -> String? in
+            let t = line.trimmingCharacters(in: .whitespaces)
+            if t.lowercased() == "## tl;dr" { return "## In short" }
+            if t.range(of: filler, options: [.regularExpression, .caseInsensitive]) != nil { return nil }
+            return line
+        }.joined(separator: "\n")
+    }
+}

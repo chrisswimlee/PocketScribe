@@ -90,6 +90,15 @@ final class ConnectionsTests: XCTestCase {
         XCTAssertFalse(Connections.plainKeywords(in: "Ship in November, November launch").contains("november"))
     }
 
+    func testDisplayRenamesTLDRAndDropsFiller() {
+        let md = "## TL;DR\nShip Friday.\n\n## Action items\n- [ ] Send the build\nNo more tasks.\n- None"
+        let out = SummaryLayout.forDisplay(md)
+        XCTAssertTrue(out.hasPrefix("## In short\nShip Friday."))
+        XCTAssertFalse(out.contains("No more tasks"))
+        XCTAssertFalse(out.contains("- None"))
+        XCTAssertTrue(out.contains("- [ ] Send the build"))
+    }
+
     func testOneSharedWordIsNotEnough() {
         let a = item("Launch", "We talked about the launch.")
         let b = item("Party", "The launch party needs balloons.")
